@@ -17,6 +17,8 @@
 
 package org.apache.spark.scheduler
 
+import org.apache.spark.util.Utils
+
 import scala.collection.mutable.HashMap
 
 import org.apache.spark.annotation.DeveloperApi
@@ -35,6 +37,7 @@ class StageInfo(
     val rddInfos: Seq[RDDInfo],
     val parentIds: Seq[Int],
     val details: String,
+    val marker: Seq[String] = Seq("default-marker"),
     private[spark] val taskLocalityPreferences: Seq[Seq[TaskLocation]] = Seq.empty) {
   /** When this stage was submitted from the DAGScheduler to a TaskScheduler. */
   var submissionTime: Option[Long] = None
@@ -79,6 +82,10 @@ private[spark] object StageInfo {
     ): StageInfo = {
     val ancestorRddInfos = stage.rdd.getNarrowAncestors.map(RDDInfo.fromRdd)
     val rddInfos = Seq(RDDInfo.fromRdd(stage.rdd)) ++ ancestorRddInfos
+    val ancestorPartitioners = stage.rdd.getNarrowAncestors.map(_.partitioner.getOrElse(None).
+      getClass.getName)
+    val partitionInfos = Seq(stage.rdd.partitioner.getOrElse(None).getClass.getName) ++
+      ancestorPartitioners
     new StageInfo(
       stage.id,
       attemptId,
@@ -87,6 +94,7 @@ private[spark] object StageInfo {
       rddInfos,
       stage.parents.map(_.id),
       stage.details,
+      partitionInfos,
       taskLocalityPreferences)
   }
 }
