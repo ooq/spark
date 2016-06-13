@@ -330,8 +330,7 @@ class VectorizedHashMapGenerator(
       s"""
          |
          |int $result = 0;
-         |int numItr = ($b.length < 2) ? $b.length : 2;
-         |for (int i = 0; i < numItr; i++) {
+         |for (int i = 0; i < $b.length; i++) {
          |  ${genComputeHash(ctx, s"$b[i]", ByteType, hash)}
          |  $result = ($result ^ (0x9e3779b9)) + $hash + ($result << 6) + ($result >>> 2);
          |}
