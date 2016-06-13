@@ -281,10 +281,14 @@ case class HashAggregateExec(
   // The name for Vectorized HashMap
   private var vectorizedHashMapTerm: String = _
   private var isVectorizedHashMapEnabled: Boolean = _
+  private var isFasterFallbackForNullableKeyEnabled: Boolean = _
 
   // The name for UnsafeRow HashMap
   private var hashMapTerm: String = _
   private var sorterTerm: String = _
+
+  // The name for null buffer
+  private var nullBufferTerm: String = _
 
   /**
    * This is called by generated Java class, should be public.
@@ -302,7 +306,7 @@ case class HashAggregateExec(
       TaskContext.get().taskMemoryManager(),
       1024 * 16, // initial capacity
       TaskContext.get().taskMemoryManager().pageSizeBytes,
-      false // disable tracking of performance metrics
+      false // enable tracking of performance metrics
     )
   }
 
@@ -480,14 +484,28 @@ case class HashAggregateExec(
     val isNotByteArrayDecimalType = bufferSchema.map(_.dataType).filter(_.isInstanceOf[DecimalType])
       .forall(!DecimalType.isByteArrayDecimalType(_))
 
-    isSupported  && isNotByteArrayDecimalType &&
+    val ret = isSupported  && isNotByteArrayDecimalType &&
       schemaLength <= sqlContext.conf.vectorizedAggregateMapMaxColumns
+    //println("grouping key length is " + groupingKeySchema.length + " buffer length " + bufferSchema.length)
+    println("enableVectorizedHashMap is " + ret)
+    ret
+  }
+
+  private def enableFasterFallbackForNullableKey(ctx: CodegenContext): Boolean = {
+    val schemaLength = (groupingKeySchema ++ bufferSchema).length
+    val ret = enableVectorizedHashMap(ctx) &&
+      (groupingKeySchema.length == 1) &&
+      (groupingKeySchema.fields(0).nullable)
+
+    //println("enableSimpleFallbackForNullableKey is " + ret)
+    false
   }
 
   private def doProduceWithKeys(ctx: CodegenContext): String = {
     val initAgg = ctx.freshName("initAgg")
     ctx.addMutableState("boolean", initAgg, s"$initAgg = false;")
     isVectorizedHashMapEnabled = enableVectorizedHashMap(ctx)
+    isFasterFallbackForNullableKeyEnabled = enableFasterFallbackForNullableKey(ctx)
     vectorizedHashMapTerm = ctx.freshName("vectorizedHashMap")
     val vectorizedHashMapClassName = ctx.freshName("VectorizedHashMap")
     val vectorizedHashMapGenerator = new VectorizedHashMapGenerator(ctx, aggregateExpressions,
@@ -507,6 +525,12 @@ case class HashAggregateExec(
     hashMapTerm = ctx.freshName("hashMap")
     val hashMapClassName = classOf[UnsafeFixedWidthAggregationMap].getName
     ctx.addMutableState(hashMapClassName, hashMapTerm, "")
+
+    nullBufferTerm = ctx.freshName("nullBuffer")
+    val nullBufferClassName =
+      classOf[org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row].getName
+    ctx.addMutableState(nullBufferClassName, nullBufferTerm, "")
+
     sorterTerm = ctx.freshName("sorter")
     ctx.addMutableState(classOf[UnsafeKVExternalSorter].getName, sorterTerm, "")
 
@@ -522,6 +546,7 @@ case class HashAggregateExec(
         ${if (isVectorizedHashMapEnabled) vectorizedHashMapGenerator.generate() else ""}
         private void $doAgg() throws java.io.IOException {
           $hashMapTerm = $thisPlan.createHashMap();
+          $nullBufferTerm = null;
           ${child.asInstanceOf[CodegenSupport].produce(ctx, this)}
 
           ${if (isVectorizedHashMapEnabled) {
@@ -646,6 +671,7 @@ case class HashAggregateExec(
       if (isVectorizedHashMapEnabled) {
         Option(
           s"""
+             |// checking null values
              |if ($checkFallbackForGeneratedHashMap) {
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
@@ -691,11 +717,11 @@ case class HashAggregateExec(
          | if ($vectorizedRowBuffer == null) {
          |   // generate grouping key
          |   ${unsafeRowKeyCode.code.trim}
+         |   // adding hash code
          |   ${hashEval.code.trim}
          |   if ($checkFallbackForBytesToBytesMap) {
-         |     // try to get the buffer from hash map
-         |     $unsafeRowBuffer =
-         |       $hashMapTerm.getAggregationBufferFromUnsafeRow($unsafeRowKeys, ${hashEval.value});
+         |       $unsafeRowBuffer =
+         |         $hashMapTerm.getAggregationBufferFromUnsafeRow($unsafeRowKeys, ${hashEval.value});
          |   }
          |   if ($unsafeRowBuffer == null) {
          |     if ($sorterTerm == null) {
@@ -757,6 +783,11 @@ case class HashAggregateExec(
      if ($vectorizedRowBuffer != null) {
        // update vectorized row
        ${updateRowInVectorizedHashMap.getOrElse("")}
+     } else if ($isFasterFallbackForNullableKeyEnabled) {
+       if ($nullBufferTerm == null) {
+        // creating the null buffer for the first time
+        // $nullBufferTerm = new
+       }
      } else {
        // update unsafe row
        $updateRowInUnsafeRowMap

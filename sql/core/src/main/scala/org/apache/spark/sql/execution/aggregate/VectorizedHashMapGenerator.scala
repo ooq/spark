@@ -130,6 +130,8 @@ class VectorizedHashMapGenerator(
        |    // TODO: Possibly generate this projection in HashAggregate directly
        |    aggregateBufferBatch = org.apache.spark.sql.execution.vectorized.ColumnarBatch.allocate(
        |      aggregateBufferSchema, org.apache.spark.memory.MemoryMode.ON_HEAP, capacity);
+       |    System.out.println("Number of columns for batch: " + batch.numCols());
+       |    System.out.println("Number of columns for aggregate: " + aggregateBufferBatch.numCols());
        |    for (int i = 0 ; i < aggregateBufferBatch.numCols(); i++) {
        |       aggregateBufferBatch.setColumn(i, batch.column(i+${groupingKeys.length}));
        |    }
@@ -155,11 +157,23 @@ class VectorizedHashMapGenerator(
 
     def genHashForKeys(groupingKeys: Seq[Buffer]): String = {
       groupingKeys.map { key =>
-        val result = ctx.freshName("result")
-        s"""
-           |${genComputeHash(ctx, key.name, key.dataType, result)}
-           |$hash = ($hash ^ (0x9e3779b9)) + $result + ($hash << 6) + ($hash >>> 2);
-          """.stripMargin
+        key.dataType match {
+          case StringType =>
+            val result = ctx.freshName("result")
+            s"""
+               |//$hash = org.apache.spark.unsafe.hash.Murmur3_x86_32.hashUnsafeBytes(${key.name}.getBaseObject(),
+               |// ${key.name}.getBaseOffset(), ${key.name}.numBytes(), (int) $hash);
+               |${genComputeHash(ctx, key.name, key.dataType, result)}
+               |$hash = ($hash ^ (0x9e3779b9)) + $result + ($hash << 6) + ($hash >>> 2);
+               |
+             """.stripMargin
+          case _ =>
+            val result = ctx.freshName("result")
+            s"""
+               |${genComputeHash(ctx, key.name, key.dataType, result)}
+               |$hash = ($hash ^ (0x9e3779b9)) + $result + ($hash << 6) + ($hash >>> 2);
+             """.stripMargin
+        }
       }.mkString("\n")
     }
 
@@ -314,8 +328,10 @@ class VectorizedHashMapGenerator(
     def hashBytes(b: String): String = {
       val hash = ctx.freshName("hash")
       s"""
+         |
          |int $result = 0;
-         |for (int i = 0; i < $b.length; i++) {
+         |int numItr = ($b.length < 2) ? $b.length : 2;
+         |for (int i = 0; i < numItr; i++) {
          |  ${genComputeHash(ctx, s"$b[i]", ByteType, hash)}
          |  $result = ($result ^ (0x9e3779b9)) + $hash + ($result << 6) + ($result >>> 2);
          |}

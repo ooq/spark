@@ -456,10 +456,12 @@ public final class BytesToBytesMap extends MemoryConsumer {
   public void safeLookup(Object keyBase, long keyOffset, int keyLength, Location loc, int hash) {
     assert(longArray != null);
 
+
     if (enablePerfMetrics) {
       numKeyLookups++;
     }
     int pos = hash & mask;
+
     int step = 1;
     while (true) {
       if (enablePerfMetrics) {
@@ -474,6 +476,8 @@ public final class BytesToBytesMap extends MemoryConsumer {
         if ((int) (stored) == hash) {
           // Full hash code matches.  Let's compare the keys for equality.
           loc.with(pos, hash, true);
+          return;//debugging return
+          /*
           if (loc.getKeyLength() == keyLength) {
             final boolean areEqual = ByteArrayMethods.arrayEquals(
               keyBase,
@@ -490,6 +494,7 @@ public final class BytesToBytesMap extends MemoryConsumer {
               }
             }
           }
+          */
         }
       }
       pos = (pos + step) & mask;
@@ -869,6 +874,13 @@ public final class BytesToBytesMap extends MemoryConsumer {
       throw new IllegalStateException();
     }
     return (1.0 * numProbes) / numKeyLookups;
+  }
+
+  public long getTotalLookups() {
+    if (!enablePerfMetrics) {
+      throw new IllegalStateException();
+    }
+    return numKeyLookups;
   }
 
   public long getNumHashCollisions() {

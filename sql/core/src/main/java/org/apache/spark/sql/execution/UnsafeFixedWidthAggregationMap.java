@@ -219,6 +219,7 @@ public final class UnsafeFixedWidthAggregationMap {
    * Free the memory associated with this map. This is idempotent and can be called multiple times.
    */
   public void free() {
+    if (enablePerfMetrics) printPerfMetrics();
     map.free();
   }
 
@@ -231,6 +232,7 @@ public final class UnsafeFixedWidthAggregationMap {
     System.out.println("Number of hash collisions: " + map.getNumHashCollisions());
     System.out.println("Time spent resizing (ns): " + map.getTimeSpentResizingNs());
     System.out.println("Total memory consumption (bytes): " + map.getTotalMemoryConsumption());
+    System.out.println("Total look ups: " + map.getTotalLookups());
   }
 
   /**

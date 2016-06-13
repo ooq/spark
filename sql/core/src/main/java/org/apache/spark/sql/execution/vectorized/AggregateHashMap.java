@@ -54,8 +54,18 @@ public class AggregateHashMap {
   public AggregateHashMap(StructType schema, int capacity, double loadFactor, int maxSteps) {
 
     // We currently only support single key-value pair that are both longs
-    assert (schema.size() == 2 && schema.fields()[0].dataType() == LongType &&
-        schema.fields()[1].dataType() == LongType);
+    boolean case1 = schema.size() == 2 && schema.fields()[0].dataType() == LongType &&
+        schema.fields()[1].dataType() == LongType;
+
+    boolean case2 = schema.size() == 3 && schema.fields()[0].dataType() == LongType &&
+            schema.fields()[1].dataType() == LongType && schema.fields()[2].dataType() == LongType;
+
+    boolean case3 = schema.size() == 4 && schema.fields()[0].dataType() == LongType &&
+            schema.fields()[1].dataType() == LongType &&
+            schema.fields()[2].dataType() == LongType &&
+            schema.fields()[3].dataType() == LongType;
+
+    assert(case1 || case2 || case3);
 
     // capacity should be a power of 2
     assert (capacity > 0 && ((capacity & (capacity - 1)) == 0));
@@ -81,6 +91,31 @@ public class AggregateHashMap {
     return batch.getRow(buckets[idx]);
   }
 
+
+  public ColumnarBatch.Row findOrInsert(long key1, long key2) {
+    int idx = find(key1, key2);
+    if (idx != -1 && buckets[idx] == -1) {
+      batch.column(0).putLong(numRows, key1);
+      batch.column(1).putLong(numRows, key2);
+      batch.column(2).putLong(numRows, 0);
+      buckets[idx] = numRows++;
+    }
+    return batch.getRow(buckets[idx]);
+  }
+
+  public ColumnarBatch.Row findOrInsert(long key1, long key2, long key3) {
+    int idx = find(key1, key2, key3);
+    if (idx != -1 && buckets[idx] == -1) {
+      batch.column(0).putLong(numRows, key1);
+      batch.column(1).putLong(numRows, key2);
+      batch.column(2).putLong(numRows, key3);
+      batch.column(3).putLong(numRows, 0);
+      buckets[idx] = numRows++;
+    }
+    return batch.getRow(buckets[idx]);
+  }
+
+
   @VisibleForTesting
   public int find(long key) {
     long h = hash(key);
@@ -90,7 +125,7 @@ public class AggregateHashMap {
       // Return bucket index if it's either an empty slot or already contains the key
       if (buckets[idx] == -1) {
         return idx;
-      } else if (equals(idx, key)) {
+      } else if (equals(idx, 0, key)) {
         return idx;
       }
       idx = (idx + 1) & (numBuckets - 1);
@@ -100,11 +135,67 @@ public class AggregateHashMap {
     return -1;
   }
 
-  private long hash(long key) {
-    return key;
+  @VisibleForTesting
+  public int find(long key1, long key2) {
+    long h = hash(key1, key2);
+    int step = 0;
+    int idx = (int) h & (numBuckets - 1);
+    while (step < maxSteps) {
+      // Return bucket index if it's either an empty slot or already contains the key
+      if (buckets[idx] == -1) {
+        return idx;
+      } else if (equals(idx, 0, key1) && equals(idx, 1, key2)) {
+        return idx;
+      }
+      idx = (idx + 1) & (numBuckets - 1);
+      step++;
+    }
+    // Didn't find it
+    return -1;
   }
 
-  private boolean equals(int idx, long key1) {
-    return batch.column(0).getLong(buckets[idx]) == key1;
+  @VisibleForTesting
+  public int find(long key1, long key2, long key3) {
+    long h = hash(key1, key2, key3);
+    int step = 0;
+    int idx = (int) h & (numBuckets - 1);
+    while (step < maxSteps) {
+      // Return bucket index if it's either an empty slot or already contains the key
+      if (buckets[idx] == -1) {
+        return idx;
+      } else if (equals(idx, 0, key1) && equals(idx, 1, key2) && equals(idx, 2, key3)) {
+        return idx;
+      }
+      idx = (idx + 1) & (numBuckets - 1);
+      step++;
+    }
+    // Didn't find it
+    return -1;
+  }
+
+
+  private long hash(long key) {
+    long hash = 0;
+    hash = (hash ^ (0x9e3779b9)) + key + (hash << 6) + (hash >>> 2);
+    return hash;
+  }
+
+  private long hash(long key1, long key2) {
+    long hash = 0;
+    hash = (hash ^ (0x9e3779b9)) + key1 + (hash << 6) + (hash >>> 2);
+    hash = (hash ^ (0x9e3779b9)) + key2 + (hash << 6) + (hash >>> 2);
+    return hash;
+  }
+
+  private long hash(long key1, long key2, long key3) {
+    long hash = 0;
+    hash = (hash ^ (0x9e3779b9)) + key1 + (hash << 6) + (hash >>> 2);
+    hash = (hash ^ (0x9e3779b9)) + key2 + (hash << 6) + (hash >>> 2);
+    hash = (hash ^ (0x9e3779b9)) + key3 + (hash << 6) + (hash >>> 2);
+    return hash;
+  }
+
+  private boolean equals(int idx, int columnIndex, long key1) {
+    return batch.column(columnIndex).getLong(buckets[idx]) == key1;
   }
 }
