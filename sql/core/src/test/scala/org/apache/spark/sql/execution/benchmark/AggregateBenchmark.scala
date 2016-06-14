@@ -19,9 +19,10 @@ package org.apache.spark.sql.execution.benchmark
 
 import java.util.HashMap
 
+import net.jpountz.xxhash.XXHash32
 import org.apache.spark.SparkConf
 import org.apache.spark.memory.{StaticMemoryManager, TaskMemoryManager}
-import org.apache.spark.sql.catalyst.expressions.UnsafeRow
+import org.apache.spark.sql.catalyst.expressions.{UnsafeRow, XxHash64, XxHash64Function}
 import org.apache.spark.sql.execution.joins.LongToUnsafeRowMap
 import org.apache.spark.sql.execution.vectorized.AggregateHashMap
 import org.apache.spark.sql.types.{LongType, StructType}
@@ -376,27 +377,33 @@ class AggregateBenchmark extends BenchmarkBase {
 
 
   test("compare hashing functions") {
-    val N = 20 << 20
-    val seed = new Random(42)
-    val stringLength = 10
-    val byteArray = new Array[UTF8String](N)
-    val tempArray = new Array[Byte](stringLength)
+    //val N = 10000000
+    val N = 100000000
+    val K = 100000
+    //val N = 4
+    val seed = new Random()
+    val stringLength = 50
+    val byteArray = new Array[UTF8String](K)
+
     val benchmark = new Benchmark("compare hashing functions", N, outputPerIteration = true)
 
 
     var i = 0
-    while (i < N) {
+    while (i < K) {
+      val tempArray = new Array[Byte](stringLength)
       seed.nextBytes(tempArray)
       byteArray(i) = UTF8String.fromBytes(tempArray)
       i += 1
     }
 
-    benchmark.addCase(s"overhead", numIters = 3) { iter =>
+    println(byteArray(1).getBytes().length)
+
+    benchmark.addCase(s"overhead", numIters = 10) { iter =>
       var i = 0
       while (i < N) {
         var h = 42
         var j = 0
-        val s = byteArray(i)
+        val s = byteArray(i%K)
         val b = s.getBytes()
         while (j < b.length) {
           var bj = b(j)
@@ -406,24 +413,45 @@ class AggregateBenchmark extends BenchmarkBase {
       }
     }
 
-    benchmark.addCase(s"murmur hash1", numIters = 3) { iter =>
+
+    benchmark.addCase(s"murmur hash1", numIters = 10) { iter =>
+      var i = 0
+      var elapsed = 0L
+
+      while (i < N) {
+        //elapsed -= System.nanoTime
+        var h = 42
+        val s = byteArray(i%K)
+        h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
+        i += 1
+        //elapsed += System.nanoTime
+      }
+      //println("murmur time per row is " + (elapsed/N).toString())
+
+    }
+
+
+    benchmark.addCase(s"xx hash1", numIters = 10) { iter =>
       var i = 0
       while (i < N) {
         var h = 42
-        val s = byteArray(i)
-        h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
+        val s = byteArray(i%K)
+        h = org.apache.spark.sql.catalyst.expressions.XXH64.hashUnsafeBytes(
+          s.getBaseObject, s.getBaseOffset, s.numBytes(), h).toInt
         i += 1
       }
     }
 
-    benchmark.addCase(s"our hash1", numIters = 3) { iter =>
+    benchmark.addCase(s"our hash1", numIters = 10) { iter =>
       var i = 0
       var j = 0
+      var elapsed = 0L
       while (i < N) {
+        //elapsed -= System.nanoTime
         j = 0
         var r = 0
         var h = 42
-        val s = byteArray(i)
+        val s = byteArray(i%K)
         val b = s.getBytes()
         while (j < b.length) {
           r = (r ^ (0x9e3779b9)) + b(j) + (r << 6) + (r >>> 2)
@@ -431,7 +459,9 @@ class AggregateBenchmark extends BenchmarkBase {
         }
         h = (h ^ (0x9e3779b9)) + r + (h << 6) + (h >>> 2)
         i += 1
+        //elapsed += System.nanoTime
       }
+      //println("our hash time per row is " + (elapsed/N).toString())
     }
 
     benchmark.run()

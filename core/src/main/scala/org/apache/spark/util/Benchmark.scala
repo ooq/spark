@@ -139,6 +139,7 @@ private[spark] class Benchmark(
     val runTimes = ArrayBuffer[Long]()
     var i = 0
     while (i < minIters || runTimes.sum < minDuration) {
+      System.gc()
       val timer = new Benchmark.Timer(i)
       f(timer)
       val runTime = timer.totalTime()
@@ -220,6 +221,7 @@ private[spark] object Benchmark {
     val runtimeVersion = System.getProperty("java.runtime.version")
     val osName = System.getProperty("os.name")
     val osVersion = System.getProperty("os.version")
-    s"${vmName} ${runtimeVersion} on ${osName} ${osVersion}"
+    val cores = Runtime.getRuntime().availableProcessors()
+    s"${vmName} ${runtimeVersion} on ${osName} ${osVersion} with ${cores} cores"
   }
 }
