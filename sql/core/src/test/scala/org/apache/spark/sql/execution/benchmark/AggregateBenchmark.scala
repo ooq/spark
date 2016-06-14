@@ -378,16 +378,33 @@ class AggregateBenchmark extends BenchmarkBase {
   test("compare hashing functions") {
     val N = 20 << 20
     val seed = new Random(42)
-    val byteArray = new Array[UTF8String](N)
     val stringLength = 10
-    val benchmark = new Benchmark("compare hashing functions", N, outputPerIteration=true)
+    val byteArray = new Array[UTF8String](N)
+    val tempArray = new Array[Byte](stringLength)
+    val benchmark = new Benchmark("compare hashing functions", N, outputPerIteration = true)
+
 
     var i = 0
     while (i < N) {
-      byteArray(i) = UTF8String.fromString(seed.nextString(20)).substring(0,stringLength)
+      seed.nextBytes(tempArray)
+      byteArray(i) = UTF8String.fromBytes(tempArray)
       i += 1
     }
 
+    benchmark.addCase(s"overhead", numIters = 3) { iter =>
+      var i = 0
+      while (i < N) {
+        var h = 42
+        var j = 0
+        val s = byteArray(i)
+        val b = s.getBytes()
+        while (j < b.length) {
+          var bj = b(j)
+          j += 1
+        }
+        i += 1
+      }
+    }
 
     benchmark.addCase(s"murmur hash1", numIters = 3) { iter =>
       var i = 0
@@ -407,8 +424,9 @@ class AggregateBenchmark extends BenchmarkBase {
         var r = 0
         var h = 42
         val s = byteArray(i)
-        while (j < s.getBytes().length) {
-          r = (r ^ (0x9e3779b9)) + s.getBytes()(j) + (r << 6) + (r >>> 2)
+        val b = s.getBytes()
+        while (j < b.length) {
+          r = (r ^ (0x9e3779b9)) + b(j) + (r << 6) + (r >>> 2)
           j += 1
         }
         h = (h ^ (0x9e3779b9)) + r + (h << 6) + (h >>> 2)
