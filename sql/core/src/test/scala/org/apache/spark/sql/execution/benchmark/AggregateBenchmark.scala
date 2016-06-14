@@ -32,6 +32,8 @@ import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.unsafe.types.UTF8String
 import org.apache.spark.util.Benchmark
 
+import scala.util.Random
+
 /**
  * Benchmark to measure performance for aggregate primitives.
  * To run this:
@@ -375,37 +377,35 @@ class AggregateBenchmark extends BenchmarkBase {
 
   test("compare hashing functions") {
     val N = 20 << 20
+    val seed = new Random(42)
+    val byteArray = new Array[UTF8String](N)
+    val benchmark = new Benchmark("compare hashing functions", N, outputPerIteration=true)
 
-    val benchmark = new Benchmark("compare hashing functions", N)
-
-
-    benchmark.addCase(s"generating random numbers", numIters = 3) { iter =>
-      var i = 0
-      while (i < N) {
-        var h = 42
-        val s = UTF8String.fromString(i.toString)
-        i += 1
-      }
+    var i = 0
+    while (i < N) {
+      val numString = i.toString
+      byteArray(i) = UTF8String.fromString(seed.nextString(20))
+      i += 1
     }
 
-    benchmark.addCase(s"murmur hash", numIters = 3) { iter =>
+    benchmark.addCase(s"murmur hash1", numIters = 3) { iter =>
       var i = 0
       while (i < N) {
         var h = 42
-        val s = UTF8String.fromString(i.toString)
+        val s = byteArray(i)
         h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
         i += 1
       }
     }
 
-    benchmark.addCase(s"our hash", numIters = 3) { iter =>
+    benchmark.addCase(s"our hash1", numIters = 3) { iter =>
       var i = 0
       var j = 0
       while (i < N) {
         j = 0
         var r = 0
         var h = 42
-        val s = UTF8String.fromString(i.toString)
+        val s = byteArray(i)
         while (j < s.getBytes().length) {
           r = (r ^ (0x9e3779b9)) + s.getBytes()(j) + (r << 6) + (r >>> 2)
           j += 1
@@ -415,6 +415,59 @@ class AggregateBenchmark extends BenchmarkBase {
       }
     }
 
+    benchmark.addCase(s"murmur hash2", numIters = 1) { iter =>
+      var i = 0
+      while (i < N) {
+        var h = 42
+        val s = byteArray(i)
+        h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
+        i += 1
+      }
+    }
+
+    benchmark.addCase(s"our hash2", numIters = 1) { iter =>
+      var i = 0
+      var j = 0
+      while (i < N) {
+        j = 0
+        var r = 0
+        var h = 42
+        val s = byteArray(i)
+        while (j < s.getBytes().length) {
+          r = (r ^ (0x9e3779b9)) + s.getBytes()(j) + (r << 6) + (r >>> 2)
+          j += 1
+        }
+        h = (h ^ (0x9e3779b9)) + r + (h << 6) + (h >>> 2)
+        i += 1
+      }
+    }
+
+    benchmark.addCase(s"murmur hash3", numIters = 1) { iter =>
+      var i = 0
+      while (i < N) {
+        var h = 42
+        val s = byteArray(i)
+        h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
+        i += 1
+      }
+    }
+
+    benchmark.addCase(s"our hash3", numIters = 1) { iter =>
+      var i = 0
+      var j = 0
+      while (i < N) {
+        j = 0
+        var r = 0
+        var h = 42
+        val s = byteArray(i)
+        while (j < s.getBytes().length) {
+          r = (r ^ (0x9e3779b9)) + s.getBytes()(j) + (r << 6) + (r >>> 2)
+          j += 1
+        }
+        h = (h ^ (0x9e3779b9)) + r + (h << 6) + (h >>> 2)
+        i += 1
+      }
+    }
     benchmark.run()
 
     /*
