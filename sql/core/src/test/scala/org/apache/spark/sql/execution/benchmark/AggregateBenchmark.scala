@@ -379,14 +379,15 @@ class AggregateBenchmark extends BenchmarkBase {
     val N = 20 << 20
     val seed = new Random(42)
     val byteArray = new Array[UTF8String](N)
+    val stringLength = 10
     val benchmark = new Benchmark("compare hashing functions", N, outputPerIteration=true)
 
     var i = 0
     while (i < N) {
-      val numString = i.toString
-      byteArray(i) = UTF8String.fromString(seed.nextString(20))
+      byteArray(i) = UTF8String.fromString(seed.nextString(20)).substring(0,stringLength)
       i += 1
     }
+
 
     benchmark.addCase(s"murmur hash1", numIters = 3) { iter =>
       var i = 0
@@ -415,70 +416,8 @@ class AggregateBenchmark extends BenchmarkBase {
       }
     }
 
-    benchmark.addCase(s"murmur hash2", numIters = 1) { iter =>
-      var i = 0
-      while (i < N) {
-        var h = 42
-        val s = byteArray(i)
-        h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
-        i += 1
-      }
-    }
-
-    benchmark.addCase(s"our hash2", numIters = 1) { iter =>
-      var i = 0
-      var j = 0
-      while (i < N) {
-        j = 0
-        var r = 0
-        var h = 42
-        val s = byteArray(i)
-        while (j < s.getBytes().length) {
-          r = (r ^ (0x9e3779b9)) + s.getBytes()(j) + (r << 6) + (r >>> 2)
-          j += 1
-        }
-        h = (h ^ (0x9e3779b9)) + r + (h << 6) + (h >>> 2)
-        i += 1
-      }
-    }
-
-    benchmark.addCase(s"murmur hash3", numIters = 1) { iter =>
-      var i = 0
-      while (i < N) {
-        var h = 42
-        val s = byteArray(i)
-        h = Murmur3_x86_32.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), h)
-        i += 1
-      }
-    }
-
-    benchmark.addCase(s"our hash3", numIters = 1) { iter =>
-      var i = 0
-      var j = 0
-      while (i < N) {
-        j = 0
-        var r = 0
-        var h = 42
-        val s = byteArray(i)
-        while (j < s.getBytes().length) {
-          r = (r ^ (0x9e3779b9)) + s.getBytes()(j) + (r << 6) + (r >>> 2)
-          j += 1
-        }
-        h = (h ^ (0x9e3779b9)) + r + (h << 6) + (h >>> 2)
-        i += 1
-      }
-    }
     benchmark.run()
 
-    /*
-    Java HotSpot(TM) 64-Bit Server VM 1.8.0_73-b02 on Mac OS X 10.11.4
-    Intel(R) Core(TM) i7-4960HQ CPU @ 2.60GHz
-    Aggregate w string key:             Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
-    -------------------------------------------------------------------------------------------
-    codegen = F                              3307 / 3376          6.3         157.7       1.0X
-    codegen = T hashmap = F                  2364 / 2471          8.9         112.7       1.4X
-    codegen = T hashmap = T                  1740 / 1841         12.0          83.0       1.9X
-    */
   }
 
   ignore("aggregate with decimal key") {
