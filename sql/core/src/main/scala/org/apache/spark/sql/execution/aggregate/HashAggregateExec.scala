@@ -29,6 +29,7 @@ import org.apache.spark.sql.execution._
 import org.apache.spark.sql.execution.metric.{SQLMetric, SQLMetrics}
 import org.apache.spark.sql.types.{DecimalType, StringType, StructType}
 import org.apache.spark.unsafe.KVIterator
+import org.apache.spark.unsafe.map.BytesToBytesMap
 import org.apache.spark.util.Utils
 
 /**
@@ -305,6 +306,10 @@ case class HashAggregateExec(
       TaskContext.get().taskMemoryManager().pageSizeBytes,
       false // disable tracking of performance metrics
     )
+  }
+
+  def createBytesToBytesMap(): BytesToBytesMap = {
+
   }
 
   /**
