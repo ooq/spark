@@ -576,4 +576,33 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
+  test("A helper test to check codegen") {
+    val N = 20 << 20
+
+    val benchmark = new Benchmark("codegen checker", N)
+
+
+    sparkSession.range(N)
+      .selectExpr(
+        "id",
+        "(id & 1023) as k1",
+        "cast(id & 1023 as string) as k2",
+        "cast(id & 1023 as int) as k3")
+      .createOrReplaceTempView("test")
+
+      def f(): Unit = sparkSession.sql("select count(*), sum(id), k1, k2, k3" +
+        " from test group by k1, k2, k3")
+      .queryExecution.debug.codegen()
+
+
+    //benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 1) { iter =>
+      sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+      f()
+    //}
+
+    //benchmark.run()
+  }
+
 }

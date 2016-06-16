@@ -308,9 +308,9 @@ case class HashAggregateExec(
     )
   }
 
-  def createBytesToBytesMap(): BytesToBytesMap = {
-
-  }
+  //def createBytesToBytesMap(): BytesToBytesMap = {
+  //
+  //}
 
   /**
    * This is called by generated Java class, should be public.
