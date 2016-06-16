@@ -698,7 +698,7 @@ public final class BytesToBytesMap extends MemoryConsumer {
       // Here, we'll copy the data into our data pages. Because we only store a relative offset from
       // the key address instead of storing the absolute address of the value, the key and value
       // must be stored in the same memory page.
-      // (8 byte key length) (key) (value) (8 byte pointer to next value)
+      // (4 byte total length) (4 byte key length) (key) (value) (8 byte pointer to next value)
       final long recordLength = 8 + klen + vlen + 8;
       if (currentPage == null || currentPage.size() - pageCursor < recordLength) {
         if (!acquireNewPage(recordLength + 4L)) {
