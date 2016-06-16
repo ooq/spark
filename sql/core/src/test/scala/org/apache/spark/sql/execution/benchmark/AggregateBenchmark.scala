@@ -598,7 +598,7 @@ class AggregateBenchmark extends BenchmarkBase {
     //benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 1) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
       sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
       f()
     //}
 

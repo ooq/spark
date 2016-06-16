@@ -284,6 +284,9 @@ case class HashAggregateExec(
   private var vectorizedHashMapTerm: String = _
   private var isVectorizedHashMapEnabled: Boolean = _
 
+  // The name for codegened b2bmap
+  private var isCodegenedB2BMapEnabled: Boolean = _
+
   // The name for UnsafeRow HashMap
   private var hashMapTerm: String = _
   private var sorterTerm: String = _
@@ -308,9 +311,6 @@ case class HashAggregateExec(
     )
   }
 
-  //def createBytesToBytesMap(): BytesToBytesMap = {
-  //
-  //}
 
   /**
    * This is called by generated Java class, should be public.
@@ -498,18 +498,35 @@ case class HashAggregateExec(
     val initAgg = ctx.freshName("initAgg")
     ctx.addMutableState("boolean", initAgg, s"$initAgg = false;")
     isVectorizedHashMapEnabled = enableVectorizedHashMap(ctx)
+    isCodegenedB2BMapEnabled = useCodegenedBytesToBytesMap(ctx)
+
     vectorizedHashMapTerm = ctx.freshName("vectorizedHashMap")
     val vectorizedHashMapClassName = ctx.freshName("VectorizedHashMap")
-    val vectorizedHashMapGenerator = new VectorizedHashMapGenerator(ctx, aggregateExpressions,
-      vectorizedHashMapClassName, groupingKeySchema, bufferSchema)
+
+    val vectorizedHashMapGenerator =
+      if (isCodegenedB2BMapEnabled) {
+        new CodegenBytesToBytesMapGenerator(ctx, aggregateExpressions,
+          vectorizedHashMapClassName, groupingKeySchema, bufferSchema)
+      } else {
+        new VectorizedHashMapGenerator(ctx, aggregateExpressions,
+          vectorizedHashMapClassName, groupingKeySchema, bufferSchema)
+      }
+
+
     // Create a name for iterator from vectorized HashMap
     val iterTermForVectorizedHashMap = ctx.freshName("vectorizedHashMapIter")
     if (isVectorizedHashMapEnabled) {
       ctx.addMutableState(vectorizedHashMapClassName, vectorizedHashMapTerm,
         s"$vectorizedHashMapTerm = new $vectorizedHashMapClassName();")
-      ctx.addMutableState(
-        "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
-        iterTermForVectorizedHashMap, "")
+      if (isCodegenedB2BMapEnabled) {
+        ctx.addMutableState(
+          "org.apache.spark.unsafe.KVIterator",
+          iterTermForVectorizedHashMap, "")
+      } else {
+        ctx.addMutableState(
+          "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
+          iterTermForVectorizedHashMap, "")
+      }
     }
 
     // create hashMap
@@ -527,15 +544,38 @@ case class HashAggregateExec(
     val doAgg = ctx.freshName("doAggregateWithKeys")
     val peakMemory = metricTerm(ctx, "peakMemory")
     val spillSize = metricTerm(ctx, "spillSize")
+
+    def generateGenerateCode(): Option[String] = {
+      if (isVectorizedHashMapEnabled) {
+        if (isCodegenedB2BMapEnabled) {
+          s"""
+             | ${vectorizedHashMapGenerator.asInstanceOf[CodegenBytesToBytesMapGenerator].generate()}
+          """.stripMargin
+        } else {
+          s"""
+             | ${vectorizedHashMapGenerator.asInstanceOf[VectorizedHashMapGenerator].generate()}
+          """.stripMargin
+        }
+      }
+    }
+
     ctx.addNewFunction(doAgg,
       s"""
-        ${if (isVectorizedHashMapEnabled) vectorizedHashMapGenerator.generate() else ""}
+        ${generateGenerateCode}
         private void $doAgg() throws java.io.IOException {
           $hashMapTerm = $thisPlan.createHashMap();
           ${child.asInstanceOf[CodegenSupport].produce(ctx, this)}
 
-          ${if (isVectorizedHashMapEnabled) {
-              s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.rowIterator();"} else ""}
+          ${
+            if (isVectorizedHashMapEnabled) {
+              if (isCodegenedB2BMapEnabled) {
+                s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.rowIterator();"
+              } else {
+                s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.iterator();"
+              }
+            }
+          }
+
 
           $iterTerm = $thisPlan.finishAggregate($hashMapTerm, $sorterTerm, $peakMemory, $spillSize);
         }
@@ -551,8 +591,33 @@ case class HashAggregateExec(
     // so `copyResult` should be reset to `false`.
     ctx.copyResult = false
 
-    // Iterate over the aggregate rows and convert them from ColumnarBatch.Row to UnsafeRow
     def outputFromGeneratedMap: Option[String] = {
+      if (isVectorizedHashMapEnabled) {
+        if (isCodegenedB2BMapEnabled) {
+          outputFromB2BMap
+        } else {
+          outputFromGeneratedMap
+        }
+      }
+    }
+
+    def outputFromB2BMap: Option[String] = {
+      s"""
+       while ($iterTermForVectorizedHashMap.next()) {
+         $numOutput.add(1);
+         UnsafeRow $keyTerm = (UnsafeRow) $iterTermForVectorizedHashMap.getKey();
+         UnsafeRow $bufferTerm = (UnsafeRow) $iterTermForVectorizedHashMap.getValue();
+         $outputCode
+
+         // TODO: not sure what this does now
+         if (shouldStop()) return;
+       }
+       $iterTermForVectorizedHashMap.close();
+     """
+    }
+
+    // Iterate over the aggregate rows and convert them from ColumnarBatch.Row to UnsafeRow
+    def outputFromVectorizedMap: Option[String] = {
       if (isVectorizedHashMapEnabled) {
         val row = ctx.freshName("vectorizedHashMapRow")
         ctx.currentVars = null
@@ -669,6 +734,29 @@ case class HashAggregateExec(
       }
     }
 
+    val findOrInsertInCodegenB2BMap: Option[String] = {
+        Option(
+          s"""
+             |if ($checkFallbackForGeneratedHashMap) {
+             |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
+             |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
+             |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
+             |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
+             |  }
+             |}
+         """.stripMargin)
+    }
+
+    val findOrInsertFastHashMap: Option[String] = {
+      if (isVectorizedHashMapEnabled) {
+        if (isCodegenedB2BMapEnabled) {
+          findOrInsertInCodegenB2BMap
+        } else {
+          findOrInsertInVectorizedHashMap
+        }
+      }
+    }
+
     val updateRowInVectorizedHashMap: Option[String] = {
       if (isVectorizedHashMapEnabled) {
         ctx.INPUT_ROW = vectorizedRowBuffer
@@ -756,9 +844,17 @@ case class HashAggregateExec(
     // Finally, sort the spilled aggregate buffers by key, and merge them together for same key.
     s"""
      UnsafeRow $unsafeRowBuffer = null;
-     org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $vectorizedRowBuffer = null;
+     ${
+        if (isCodegenedB2BMapEnabled) {
+          s"""
+             | UnsafeRow $vectorizedRowBuffer = null;
+           """.stripMargin
+        } else {
+          "org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $vectorizedRowBuffer = null;"
+        }
+      }
 
-     ${findOrInsertInVectorizedHashMap.getOrElse("")}
+     $findOrInsertFastHashMap
 
      $findOrInsertInUnsafeRowMap
 
