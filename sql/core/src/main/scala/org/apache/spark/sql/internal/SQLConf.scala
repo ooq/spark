@@ -517,6 +517,14 @@ object SQLConf {
       .intConf
       .createWithDefault(3)
 
+  val ROWBASED_FAST_HASHMAP_ENABLED =
+    SQLConfigBuilder("spark.sql.codegen.aggregate.map.rowbased")
+      .internal()
+      .doc("When true, we use the codegen version of bytestobytes map to replace the vectorized one")
+      .booleanConf
+      .createWithDefault(false)
+
+
   val FILE_SINK_LOG_DELETION = SQLConfigBuilder("spark.sql.streaming.fileSink.log.deletion")
     .internal()
     .doc("Whether to delete the expired log files in file stream sink.")
@@ -678,6 +686,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf with Logging {
   override def runSQLonFile: Boolean = getConf(RUN_SQL_ON_FILES)
 
   def vectorizedAggregateMapMaxColumns: Int = getConf(VECTORIZED_AGG_MAP_MAX_COLUMNS)
+
+  def rowBasedFastHashMapEnabled: Boolean = getConf(ROWBASED_FAST_HASHMAP_ENABLED)
 
   def variableSubstituteEnabled: Boolean = getConf(VARIABLE_SUBSTITUTE_ENABLED)
 

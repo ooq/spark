@@ -490,6 +490,10 @@ case class HashAggregateExec(
       schemaLength <= sqlContext.conf.vectorizedAggregateMapMaxColumns
   }
 
+  private def useCodegenedBytesToBytesMap(ctx: CodegenContext): Boolean = {
+    sqlContext.conf.rowBasedFastHashMapEnabled
+  }
+
   private def doProduceWithKeys(ctx: CodegenContext): String = {
     val initAgg = ctx.freshName("initAgg")
     ctx.addMutableState("boolean", initAgg, s"$initAgg = false;")
