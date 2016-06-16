@@ -21,9 +21,7 @@ import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression,
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.types._
 
-/**
-  * This is a helper class to generate an BytesToBytes hash map
-  */
+
 class CodegenBytesToBytesMapGenerator(
                                   ctx: CodegenContext,
                                   aggregateExpressions: Seq[AggregateExpression],
@@ -66,11 +64,15 @@ class CodegenBytesToBytesMapGenerator(
        |
        |${generateFindOrInsert()}
        |
+       |${generateAcquireNewPage()}
+       |
        |${generateEquals()}
+       |
+       |${generateArrayEquals()}
        |
        |${generateHashFunction()}
        |
-       |${generateRowIterator()}
+       |${generateKVIterator()}
        |
        |${generateClose()}
        |}
@@ -81,6 +83,18 @@ class CodegenBytesToBytesMapGenerator(
     val generatedSchema: String =
       s"new org.apache.spark.sql.types.StructType()" +
         (groupingKeySchema ++ bufferSchema).map { key =>
+          key.dataType match {
+            case d: DecimalType =>
+              s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.createDecimalType(
+                  |${d.precision}, ${d.scale}))""".stripMargin
+            case _ =>
+              s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.${key.dataType})"""
+          }
+        }.mkString("\n").concat(";")
+
+    val generatedGroupingKeySchema: String =
+      s"new org.apache.spark.sql.types.StructType()" +
+        groupingKeySchema.map { key =>
           key.dataType match {
             case d: DecimalType =>
               s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.createDecimalType(
@@ -104,31 +118,46 @@ class CodegenBytesToBytesMapGenerator(
 
     s"""
        |
-       |  private static final int PAGE_NUMBER_BITS = 13;
-       |  private static final int OFFSET_BITS = 64 - PAGE_NUMBER_BITS;  // 51
-       |  private static final int PAGE_TABLE_SIZE = 1 << PAGE_NUMBER_BITS;
-       |  public static final long MAXIMUM_PAGE_SIZE_BYTES = ((1L << 31) - 1) * 8L;
-       |  private static final long MASK_LONG_LOWER_51_BITS = 0x7FFFFFFFFFFFFL;
        |
        |  private int capacity = 1 << 16;
        |  private double loadFactor = 0.5;
-       |  private int maxSteps = 2;
+       |  private int maxSteps= 2;
        |  private int numRows = 0;
        |  private org.apache.spark.sql.types.StructType schema = $generatedSchema
        |  private org.apache.spark.sql.types.StructType aggregateBufferSchema =
        |    $generatedAggBufferSchema
+       |  private org.apache.spark.sql.types.StructType groupingKeySchema =
+       |    $generatedGroupingKeySchema
        |  LongArray longArray;
        |  private int mask;
        |  private TaskMemoryManager taskMemoryManager;
+       |  private final LinkedList<MemoryBlock> dataPages = new LinkedList<>();
+       |  private MemoryBlock currentPage = null;
+       |  private long pageCursor = 0;
+       |  private final byte[] emptyAggregationBuffer;
        |
+       |  private Object vbase;
+       |  private long voff;
+       |  private long vlen;
        |
-       |  public $generatedClassName(TaskMemoryManager taskMemoryManager) {
+       |  // a re-used pointer to the current aggregation buffer
+       |  private final UnsafeRow currentAggregationBuffer;
+       |
+       |  public $generatedClassName(
+       |    TaskMemoryManager taskMemoryManager,
+       |    InternalRow emptyAggregationBuffer) {
        |
        |    this.taskMemoryManager = taskMemoryManager;
        |    longArray = allocateArray(capacity * 2);
        |    longArray.zeroOut();
        |    mask = capacity - 1;
        |
+       |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregationBufferSchema);
+       |    this.emptyAggregationBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
+       |
+       |    vbase = emptyAggregationBuffer.getBaseObject();
+       |    voff = emptyAggregationBuffer.getBaseOffset();
+       |    vlen = emptyAggregationBuffer.getSizeInBytes();
        |
        |  }
      """.stripMargin
@@ -194,6 +223,56 @@ class CodegenBytesToBytesMapGenerator(
      """.stripMargin
   }
 
+  private def generateArrayEquals(): String = {
+    s"""
+       |private boolean arrayEquals(
+       |  Object leftBase, long leftOffset, Object rightBase, long rightOffset, final long length) {
+       |      int i = 0;
+       |    while (i <= length - 8) {
+       |      if (Platform.getLong(leftBase, leftOffset + i) !=
+       |        Platform.getLong(rightBase, rightOffset + i)) {
+       |        return false;
+       |      }
+       |      i += 8;
+       |    }
+       |    while (i < length) {
+       |      if (Platform.getByte(leftBase, leftOffset + i) !=
+       |        Platform.getByte(rightBase, rightOffset + i)) {
+       |        return false;
+       |      }
+       |      i += 1;
+       |    }
+       |    return true;
+       |
+       |
+       |}
+     """.stripMargin
+  }
+
+  /**
+    * Generate a method that acquires a new memory page
+    *
+    * @return
+    */
+  private def generateAcquireNewPage(): String = {
+
+    s"""
+       |private boolean acquireNewPage(long required) {
+       |    try {
+       |      currentPage = allocatePage(required);
+       |    } catch (OutOfMemoryError e) {
+       |      return false;
+       |    }
+       |    Platform.putInt(currentPage.getBaseObject(), currentPage.getBaseOffset(), 0);
+       |    pageCursor = 4;
+       |
+       |    dataPages.add(currentPage);
+       |     //TODO: add code to recycle the pages when we destroy this map
+       |    return true;
+       |}
+     """.stripMargin
+  }
+
   /**
     * Generates a method that returns a mutable
     * [[org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row]] which keeps track of the
@@ -243,36 +322,81 @@ class CodegenBytesToBytesMapGenerator(
     }
 
     s"""
-       |public UnsafeRow findOrInsert(${
+       |public UnsafeRow findOrInsert(UnsafeRow rowKey, ${
       groupingKeySignature}) {
        |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  int step = 0;
+       |  int step = 1;
        |  int pos = (int) h & mask;
+       |  Object kbase = rowKey.getBaseObject(); // could be cogen
+       |  long koff = rowKey.getBaseOffset();  // could be cogen
+       |  long klen = rowKey.getSizeInBytes(); // could be cogen
        |  while (step < maxSteps) {
        |    if (longArray.get(pos * 2) == 0) { //new entry
        |      if (numRows < capacity) {
        |
+       |        // do append
+       |        final long recordLength = 8 + klen + vlen + 8;
+       |        if (currentPage == null || currentPage.size() - pageCursor < recordLength) {
+       |          // acquire new page
+       |          if( !acquireNewPage(recordLength + 4L)) {
+       |            return null;
+       |          }
+       |        }
+       |
        |        // Initialize aggregate keys
-       |        ${genCodeToSetKeys(groupingKeys).mkString("\n")}
+       |        // append the keys and values to current data page
+       |        final Object base = currentPage.getBaseObject();
+       |        long offset = currentPage.getBaseeOffset() + pageCursor;
+       |        final long recordOffset = offset;
+       |        Platform.putInt(base, offset, klen + vlen + 4);
+       |        Platform.putInt(base, offset + 4, klen);
+       |        offset += 8;
+       |        Platform.copyMemory(kbase, koff, base, offset, klen);
+       |        offset += klen;
+       |        Platform.copyMemory(vbase, voff, base, offset, vlen);
+       |        offset += vlen;
+       |        // put this value at the beginning of the list
+       |        Platform.putLong(base, offset, 0);
        |
-       |        ${buffVars.map(_.code).mkString("\n")}
+       |        // Update bookkeeping data structures -----------------------------
+       |        offset = currentPage.getBaseOffset();
+       |        Platform.putInt(base, offset, Platform.getInt(base, offset) + 1);
+       |        pageCursor += recordLength;
+       |        final long storedKeyAddress = taskMemoryManager.encodePageNumberAndOffset(
+       |        currentPage, recordOffset);
+       |        longArray.set(pos * 2, storedKeyAddress);
+       |        longArray.set(pos * 2 + 1, keyHashcode);
        |
-       |        // Initialize aggregate values
-       |        ${genCodeToSetAggBuffers(bufferValues).mkString("\n")}
-       |
-       |        buckets[idx] = numRows++;
-       |        batch.setNumRows(numRows);
-       |        aggregateBufferBatch.setNumRows(numRows);
-       |        return aggregateBufferBatch.getRow(buckets[idx]);
+       |        // now we want point the value UnsafeRow to the correct location
+       |        // basically valuebase, valueoffset and value length
+       |        currentAggregationBuffer.pointTo(base, recordOffset + 8 + klen, vlen);
+       |        return currentAggregationBuffer;
        |      } else {
        |        // No more space
        |        return null;
        |      }
-       |    } else if (equals(idx, ${groupingKeys.map(_.name).mkString(", ")})) { //filled, check equality
-       |      return aggregateBufferBatch.getRow(buckets[idx]);
+       |    } else {
+       |      // we will check equality here and return buffer if matched
+       |      // 1st level: hash code match
+       |      long stored = longArray.get(pos * 2 + 1);
+       |      if ((int) (stored) == hash) {
+       |          // 2nd level: keys match
+       |          // TODO: codegen based with key types, so we don't need byte by byte compare
+       |          long foundFullKeyAddress = longArray.get(pos * 2);
+       |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
+       |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress)) + 8;
+       |          long foundLen = Platform.getInt(foundBase, foundOff-4);
+       |          if ((int) foundLen == klen &&
+       |              arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
+       |            currentAggregationBuffer.pointTo(base, recordOffset + 8 + klen, vlen);
+       |          }
+       |      }
+       |
        |    }
        |    // move on to the next position
-       |    idx = (idx + 1) & (numBuckets - 1);
+       |    // TODO: change the strategies
+       |    // now triangle probing
+       |    pos = (pos + step) & mask;
        |    step++;
        |  }
        |  // Didn't find it
@@ -281,12 +405,83 @@ class CodegenBytesToBytesMapGenerator(
      """.stripMargin
   }
 
-  private def generateRowIterator(): String = {
+  private def generateKVIterator(): String = {
     s"""
-       |public java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>
-       |    rowIterator() {
-       |  return batch.rowIterator();
-       |}
+       |
+       |  public KVIterator<UnsafeRow, UnsafeRow> iterator() {
+       |    return new KVIterator<UnsafeRow, UnsafeRow>() {
+       |
+       |      private final UnsafeRow key = new UnsafeRow(groupingKeySchema.length());
+       |      private final UnsafeRow value = new UnsafeRow(aggregationBufferSchema.length());
+       |
+       |      private MemoryBlock currentPage = null;
+       |      private Object pageBaseObject = null;
+       |      private long offsetInPage = 0;
+       |      private int recordsInPage = 0;
+       |
+       |      private int klen;
+       |      private int vlen;
+       |      private int totalLength;
+       |
+       |
+       |      if (dataPages.size() > 0) {
+       |        currentPage = dataPages.remove();
+       |        pageBaseObject = currentPage.getBaseObject();
+       |        offsetInPage = currentPage.getBaseOffset();
+       |        recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
+       |        offsetInPage += 4;
+       |      }
+       |
+       |      @Override
+       |      public boolean next() {
+       |        //searching for the next non empty page is records is now zero
+       |        while (recordsInPage == 0) {
+       |          if (!advanceToNextPage()) return false;
+       |        }
+       |
+       |        totalLength = Platform.getInt(pageBaseObject, offsetInPage);
+       |        klen = Platform.getInt(pageBaseObject, offsetInPage + 4);
+       |        vlen = totalLength - klen;
+       |
+       |        key.pointTo(pageBaseObject, offsetInPage + 8, klen);
+       |        value.pointtTo(pageBaseObject, offsetInPage + 8 + klen, vlen);
+       |        offsetInpage += 4 + totalLength + 8;
+       |        recordsInPage -= 1;
+       |        return true;
+       |      }
+       |
+       |      @Override
+       |      public UnsafeRow getKey() {
+       |        return key;
+       |      }
+       |
+       |      @Override
+       |      public UnsafeRow getValue() {
+       |        return value;
+       |      }
+       |
+       |      @Override
+       |      public void close() {
+       |        // Do nothing.
+       |      }
+       |
+       |      private boolean advanceToNextPage() {
+       |        if (dataPages.size() > 0) {
+       |          currentPage = dataPages.remove();
+       |          pageBaseObject = currentPage.getBaseObject();
+       |          offsetInPage = currentPage.getbaseOffset();
+       |          recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
+       |          offsetInpPage += 4;
+       |        } else {
+       |          return false;
+       |        }
+       |      }
+       |    };
+       |  }
+       |
+       |
+       |
+       |
      """.stripMargin
   }
 

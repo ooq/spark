@@ -315,6 +315,9 @@ class CodegenContext {
   /**
    * Returns the specialized code to set a given value in a column vector for a given `DataType`
    * that could potentially be nullable.
+    *
+    *
+    *
    */
   def updateColumn(
       batch: String,
