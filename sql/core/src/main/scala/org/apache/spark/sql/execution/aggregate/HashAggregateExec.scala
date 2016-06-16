@@ -596,7 +596,7 @@ case class HashAggregateExec(
         if (isCodegenedB2BMapEnabled) {
           outputFromB2BMap
         } else {
-          outputFromGeneratedMap
+          outputFromVectorizedMap
         }
       }
     }
@@ -741,6 +741,7 @@ case class HashAggregateExec(
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
+             |        rowKey,
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
              |}
@@ -756,6 +757,35 @@ case class HashAggregateExec(
         }
       }
     }
+
+
+
+    val updateRowInCodegenB2BMap: Option[String] = {
+      if (isVectorizedHashMapEnabled) {
+        ctx.INPUT_ROW = vectorizedRowBuffer
+        val boundUpdateExpr = updateExpr.map(BindReferences.bindReference(_, inputAttr))
+        val subExprs = ctx.subexpressionEliminationForWholeStageCodegen(boundUpdateExpr)
+        val effectiveCodes = subExprs.codes.mkString("\n")
+        val vectorizedRowEvals = ctx.withSubExprEliminationExprs(subExprs.states) {
+          boundUpdateExpr.map(_.genCode(ctx))
+        }
+        val updateVectorizedRow = vectorizedRowEvals.zipWithIndex.map { case (ev, i) =>
+          val dt = updateExpr(i).dataType
+          ctx.updateColumn(vectorizedRowBuffer, dt, i, ev, updateExpr(i).nullable,
+            isVectorized = false)
+        }
+        Option(
+          s"""
+             |// common sub-expressions
+             |$effectiveCodes
+             |// evaluate aggregate function
+             |${evaluateVariables(vectorizedRowEvals)}
+             |// update b2b map row
+             |${updateVectorizedRow.mkString("\n").trim}
+           """.stripMargin)
+      } else None
+    }
+
 
     val updateRowInVectorizedHashMap: Option[String] = {
       if (isVectorizedHashMapEnabled) {
@@ -782,6 +812,17 @@ case class HashAggregateExec(
            """.stripMargin)
       } else None
     }
+
+    val updateRowInFastHashMap: Option[String] = {
+      if (isVectorizedHashMapEnabled) {
+        if (isCodegenedB2BMapEnabled) {
+          updateRowInCodegenB2BMap
+        } else {
+          updateRowInVectorizedHashMap
+        }
+      }
+    }
+
 
     // Next, we generate code to probe and update the unsafe row hash map.
     val findOrInsertInUnsafeRowMap: String = {
@@ -854,15 +895,19 @@ case class HashAggregateExec(
         }
       }
 
+      //find or insert fast hash
      $findOrInsertFastHashMap
 
+      //find or insert unsafe row map
      $findOrInsertInUnsafeRowMap
 
+      //incCounter
      $incCounter
 
+
      if ($vectorizedRowBuffer != null) {
-       // update vectorized row
-       ${updateRowInVectorizedHashMap.getOrElse("")}
+       // update vectorized row outside
+       ${updateRowInFastHashMap.getOrElse("")}
      } else {
        // update unsafe row
        $updateRowInUnsafeRowMap
