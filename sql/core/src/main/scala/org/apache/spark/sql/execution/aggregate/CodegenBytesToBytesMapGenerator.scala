@@ -126,14 +126,14 @@ class CodegenBytesToBytesMapGenerator(
        |  LongArray longArray;
        |  private int mask;
        |  private TaskMemoryManager taskMemoryManager;
-       |  private final LinkedList<MemoryBlock> dataPages = new LinkedList<MemoryBlock>();
+       |  private final java.util.LinkedList<MemoryBlock> dataPages = new java.util.LinkedList<MemoryBlock>();
        |  private MemoryBlock currentPage = null;
        |  private long pageCursor = 0;
        |  private final byte[] emptyAggregationBuffer;
        |
        |  private Object vbase;
        |  private long voff;
-       |  private long vlen;
+       |  private int vlen;
        |
        |  // a re-used pointer to the current aggregation buffer
        |  private final UnsafeRow currentAggregationBuffer;
@@ -141,18 +141,20 @@ class CodegenBytesToBytesMapGenerator(
        |  public $generatedClassName(
        |    TaskMemoryManager taskMemoryManager,
        |    InternalRow emptyAggregationBuffer) {
-       |
+       |    super(taskMemoryManager,
+       |      taskMemoryManager.pageSizeBytes(),
+       |      taskMemoryManager.getTungstenMemoryMode());
        |    this.taskMemoryManager = taskMemoryManager;
        |    longArray = allocateArray(capacity * 2);
        |    longArray.zeroOut();
        |    mask = capacity - 1;
        |
-       |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregationBufferSchema);
+       |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
        |    this.emptyAggregationBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
        |
-       |    vbase = emptyAggregationBuffer.getBaseObject();
-       |    voff = emptyAggregationBuffer.getBaseOffset();
-       |    vlen = emptyAggregationBuffer.getSizeInBytes();
+       |    vbase = this.emptyAggregationBuffer;
+       |    voff = Platform.BYTE_ARRAY_OFFSET;
+       |    vlen = this.emptyAggregationBuffer.length;
        |
        |  }
      """.stripMargin
@@ -294,9 +296,13 @@ class CodegenBytesToBytesMapGenerator(
        |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
        |  int step = 1;
        |  int pos = (int) h & mask;
+       |  System.out.println("print rowkey ------");
+       |  System.out.println(rowKey);
+       |  ${groupingKeys.map("System.out.println(" + _.name + ");").mkString("\n")}
+       |  System.out.println("end print ------");
        |  Object kbase = rowKey.getBaseObject(); // could be cogen
        |  long koff = rowKey.getBaseOffset();  // could be cogen
-       |  long klen = rowKey.getSizeInBytes(); // could be cogen
+       |  int klen = rowKey.getSizeInBytes(); // could be cogen
        |  while (step < maxSteps) {
        |    if (longArray.get(pos * 2) == 0) { //new entry
        |      if (numRows < capacity) {
@@ -332,7 +338,7 @@ class CodegenBytesToBytesMapGenerator(
        |        final long storedKeyAddress = taskMemoryManager.encodePageNumberAndOffset(
        |        currentPage, recordOffset);
        |        longArray.set(pos * 2, storedKeyAddress);
-       |        longArray.set(pos * 2 + 1, keyHashcode);
+       |        longArray.set(pos * 2 + 1, h);
        |
        |        // now we want point the value UnsafeRow to the correct location
        |        // basically valuebase, valueoffset and value length
@@ -340,22 +346,24 @@ class CodegenBytesToBytesMapGenerator(
        |        return currentAggregationBuffer;
        |      } else {
        |        // No more space
+       |        System.err.println("No more space");
        |        return null;
        |      }
        |    } else {
        |      // we will check equality here and return buffer if matched
        |      // 1st level: hash code match
        |      long stored = longArray.get(pos * 2 + 1);
-       |      if ((int) (stored) == hash) {
+       |      if ((int) (stored) == h) {
        |          // 2nd level: keys match
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
        |          long foundFullKeyAddress = longArray.get(pos * 2);
        |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
        |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
-       |          long foundLen = Platform.getInt(foundBase, foundOff-4);
-       |          if ((int) foundLen == klen &&
+       |          int foundLen = Platform.getInt(foundBase, foundOff-4);
+       |          int foundTotalLen = Platform.getInt(foundBase, foundOff-8);
+       |          if (foundLen == klen &&
        |              arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
-       |            currentAggregationBuffer.pointTo(base, recordOffset + 8 + klen, vlen);
+       |            currentAggregationBuffer.pointTo(foundBase, foundOff + klen, foundTotalLen - klen);
        |          }
        |      }
        |
@@ -379,7 +387,7 @@ class CodegenBytesToBytesMapGenerator(
        |    return new org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow>() {
        |
        |      private final UnsafeRow key = new UnsafeRow(groupingKeySchema.length());
-       |      private final UnsafeRow value = new UnsafeRow(aggregationBufferSchema.length());
+       |      private final UnsafeRow value = new UnsafeRow(aggregateBufferSchema.length());
        |
        |      private MemoryBlock currentPage = null;
        |      private Object pageBaseObject = null;
@@ -395,7 +403,7 @@ class CodegenBytesToBytesMapGenerator(
        |
        |      private void init() {
        |        if (dataPages.size() > 0) {
-       |          currentPage = dataPages.remove();
+       |          currentPage = (MemoryBlock) dataPages.remove();
        |          pageBaseObject = currentPage.getBaseObject();
        |          offsetInPage = currentPage.getBaseOffset();
        |          recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
@@ -417,8 +425,8 @@ class CodegenBytesToBytesMapGenerator(
        |        vlen = totalLength - klen;
        |
        |        key.pointTo(pageBaseObject, offsetInPage + 8, klen);
-       |        value.pointtTo(pageBaseObject, offsetInPage + 8 + klen, vlen);
-       |        offsetInpage += 4 + totalLength + 8;
+       |        value.pointTo(pageBaseObject, offsetInPage + 8 + klen, vlen);
+       |        offsetInPage += 4 + totalLength + 8;
        |        recordsInPage -= 1;
        |        return true;
        |      }
@@ -440,11 +448,12 @@ class CodegenBytesToBytesMapGenerator(
        |
        |      private boolean advanceToNextPage() {
        |        if (dataPages.size() > 0) {
-       |          currentPage = dataPages.remove();
+       |          currentPage = (MemoryBlock) dataPages.remove();
        |          pageBaseObject = currentPage.getBaseObject();
-       |          offsetInPage = currentPage.getbaseOffset();
+       |          offsetInPage = currentPage.getBaseOffset();
        |          recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
-       |          offsetInpPage += 4;
+       |          offsetInPage += 4;
+       |          return true;
        |        } else {
        |          return false;
        |        }
@@ -469,7 +478,7 @@ class CodegenBytesToBytesMapGenerator(
   private def generateSpill(): String = {
     s"""
        |public long spill(long size, MemoryConsumer trigger) throws IOException {
-       |  System.out.println("ERROR: We expect spilling never happens");
+       |  System.err.println("We expect spilling never happens");
        |  return 0L;
        |}
      """.stripMargin

@@ -301,11 +301,11 @@ class AggregateBenchmark extends BenchmarkBase {
     }
 
     /**
-    Intel(R) Core(TM) i7-4558U CPU @ 2.80GHz
-      cube:                               Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
-      -------------------------------------------------------------------------------------------
-      cube codegen=false                       3188 / 3392          1.6         608.2       1.0X
-      cube codegen=true                        1239 / 1394          4.2         236.3       2.6X
+      * Intel(R) Core(TM) i7-4558U CPU @ 2.80GHz
+      * cube:                               Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
+      * -------------------------------------------------------------------------------------------
+      * cube codegen=false                       3188 / 3392          1.6         608.2       1.0X
+      * cube codegen=true                        1239 / 1394          4.2         236.3       2.6X
      */
   }
 
@@ -577,48 +577,62 @@ class AggregateBenchmark extends BenchmarkBase {
   }
 
   test("A helper test to check codegen") {
-    val N = 20 << 20
-
+    //
+    // val N = 20 << 20
+    val N = 5
     val benchmark = new Benchmark("codegen checker", N)
 
 
+    //    sparkSession.range(N)
+    //      .selectExpr(
+    //        "id",
+    //        "(id & 1023) as k1",
+    //        "cast(id & 1023 as string) as k2",
+    //        "cast(id & 1023 as int) as k3")
+    //      .createOrReplaceTempView("test")
     sparkSession.range(N)
-      .selectExpr(
-        "id",
-        "(id & 1023) as k1",
-        "cast(id & 1023 as string) as k2",
-        "cast(id & 1023 as int) as k3")
-      .createOrReplaceTempView("test")
-
+          .selectExpr(
+            "id",
+            "(id & 1023 + 1) as k1",
+            "(id & 1023 + 2) as k2",
+            "(id & 1023 + 3) as k3")
+          .createOrReplaceTempView("test")
 
     //sparkSession.sql("select count(*), sum(id), k1, k2, k3" +
     //    " from test group by k1, k2, k3")
     //  .queryExecution.debug.codegen()
 
       def f(): Unit = sparkSession.sql("select count(*), sum(id), k1, k2, k3" +
-        " from test group by k1, k2, k3").collect()
+        " from test group by k1, k2, k3").show()
 
-//
-//    benchmark.addCase(s"codegen = T hashmap = F, rowbased = F", numIters = 1) { iter =>
-//      sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
-//      sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "0")
-//      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
-//      f()
-//    }
-//
-//    benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 1) { iter =>
-//      sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
-//      sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-//      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
-//      f()
-//    }
+      sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
 
-        benchmark.addCase(s"codegen = T hashmap = T, rowbased = T", numIters = 1) { iter =>
-          sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
-          sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-          sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
-          f()
-        }
+      f()
+    //
+    //    benchmark.addCase(s"codegen = T hashmap = F, rowbased = F", numIters = 1) { iter =>
+    //      sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    //      sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "0")
+    //      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    //      f()
+    //    }
+    //
+    //    benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 1) { iter =>
+    //      sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    //      sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+    //      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    //      f()
+    //    }
+
+
+    //
+    //        benchmark.addCase(s"codegen = T hashmap = T, rowbased = T", numIters = 1) { iter =>
+    //          sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    //          sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+    //          sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    //          f()
+    //        }
 
     benchmark.run()
   }
