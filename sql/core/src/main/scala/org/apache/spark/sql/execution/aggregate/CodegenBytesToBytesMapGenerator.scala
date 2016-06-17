@@ -66,8 +66,6 @@ class CodegenBytesToBytesMapGenerator(
        |
        |${generateAcquireNewPage()}
        |
-       |${generateEquals()}
-       |
        |${generateArrayEquals()}
        |
        |${generateHashFunction()}
@@ -191,34 +189,6 @@ class CodegenBytesToBytesMapGenerator(
        |  long $hash = 0;
        |  ${genHashForKeys(groupingKeys)}
        |  return $hash;
-       |}
-     """.stripMargin
-  }
-
-  /**
-    * Generates a method that returns true if the group-by keys exist at a given index in the
-    * associated [[org.apache.spark.sql.execution.vectorized.ColumnarBatch]]. For instance, if we
-    * have 2 long group-by keys, the generated function would be of the form:
-    *
-    * {{{
-    * private boolean equals(int idx, long agg_key, long agg_key1) {
-    *   return batch.column(0).getLong(buckets[idx]) == agg_key &&
-    *     batch.column(1).getLong(buckets[idx]) == agg_key1;
-    * }
-    * }}}
-    */
-  private def generateEquals(): String = {
-
-    def genEqualsForKeys(groupingKeys: Seq[Buffer]): String = {
-      groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-        s"""(${ctx.genEqual(key.dataType, ctx.getValue("batch", "buckets[idx]",
-          key.dataType, ordinal), key.name)})"""
-      }.mkString(" && ")
-    }
-
-    s"""
-       |private boolean equals(int idx, $groupingKeySignature) {
-       |  return ${genEqualsForKeys(groupingKeys)};
        |}
      """.stripMargin
   }

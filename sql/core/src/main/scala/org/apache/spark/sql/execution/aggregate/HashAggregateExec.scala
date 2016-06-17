@@ -545,18 +545,20 @@ case class HashAggregateExec(
     val peakMemory = metricTerm(ctx, "peakMemory")
     val spillSize = metricTerm(ctx, "spillSize")
 
-    def generateGenerateCode(): Option[String] = {
-      if (isVectorizedHashMapEnabled) {
-        if (isCodegenedB2BMapEnabled) {
-          s"""
-             | ${vectorizedHashMapGenerator.asInstanceOf[CodegenBytesToBytesMapGenerator].generate()}
-          """.stripMargin
-        } else {
-          s"""
-             | ${vectorizedHashMapGenerator.asInstanceOf[VectorizedHashMapGenerator].generate()}
-          """.stripMargin
+    def generateGenerateCode(): String = {
+      var s = ""
+        if (isVectorizedHashMapEnabled) {
+          if (isCodegenedB2BMapEnabled) {
+            s = s"""
+               | ${vectorizedHashMapGenerator.asInstanceOf[CodegenBytesToBytesMapGenerator].generate()}
+            """.stripMargin
+          } else {
+            s = s"""
+               | ${vectorizedHashMapGenerator.asInstanceOf[VectorizedHashMapGenerator].generate()}
+            """.stripMargin
+          }
         }
-      }
+      s
     }
 
     ctx.addNewFunction(doAgg,
@@ -591,17 +593,19 @@ case class HashAggregateExec(
     // so `copyResult` should be reset to `false`.
     ctx.copyResult = false
 
-    def outputFromGeneratedMap: Option[String] = {
-      if (isVectorizedHashMapEnabled) {
-        if (isCodegenedB2BMapEnabled) {
-          outputFromB2BMap
-        } else {
-          outputFromVectorizedMap
+    def outputFromGeneratedMap: String = {
+      var s = ""
+        if (isVectorizedHashMapEnabled) {
+          if (isCodegenedB2BMapEnabled) {
+            s = outputFromB2BMap
+          } else {
+            s = outputFromVectorizedMap.getOrElse("")
+          }
         }
-      }
+      s
     }
 
-    def outputFromB2BMap: Option[String] = {
+    def outputFromB2BMap: String = {
       s"""
        while ($iterTermForVectorizedHashMap.next()) {
          $numOutput.add(1);
@@ -655,7 +659,7 @@ case class HashAggregateExec(
      }
 
      // output the result
-     ${outputFromGeneratedMap.getOrElse("")}
+     ${outputFromGeneratedMap}
 
      while ($iterTerm.next()) {
        $numOutput.add(1);
@@ -748,14 +752,16 @@ case class HashAggregateExec(
          """.stripMargin)
     }
 
-    val findOrInsertFastHashMap: Option[String] = {
+    val findOrInsertFastHashMap: String = {
+      var s = ""
       if (isVectorizedHashMapEnabled) {
         if (isCodegenedB2BMapEnabled) {
-          findOrInsertInCodegenB2BMap
+          s = findOrInsertInCodegenB2BMap.getOrElse("")
         } else {
-          findOrInsertInVectorizedHashMap
+          s = findOrInsertInVectorizedHashMap.getOrElse("")
         }
       }
+      s
     }
 
 
@@ -813,14 +819,16 @@ case class HashAggregateExec(
       } else None
     }
 
-    val updateRowInFastHashMap: Option[String] = {
+    val updateRowInFastHashMap: String = {
+      var s = ""
       if (isVectorizedHashMapEnabled) {
         if (isCodegenedB2BMapEnabled) {
-          updateRowInCodegenB2BMap
+          s = updateRowInCodegenB2BMap.getOrElse("")
         } else {
-          updateRowInVectorizedHashMap
+          s = updateRowInVectorizedHashMap.getOrElse("")
         }
       }
+      s
     }
 
 
@@ -907,7 +915,7 @@ case class HashAggregateExec(
 
      if ($vectorizedRowBuffer != null) {
        // update vectorized row outside
-       ${updateRowInFastHashMap.getOrElse("")}
+       ${updateRowInFastHashMap}
      } else {
        // update unsafe row
        $updateRowInUnsafeRowMap
