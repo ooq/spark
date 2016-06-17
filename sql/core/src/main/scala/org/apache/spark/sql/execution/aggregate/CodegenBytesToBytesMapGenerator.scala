@@ -67,6 +67,8 @@ class CodegenBytesToBytesMapGenerator(
        |
        |${generateKVIterator()}
        |
+       |${generateSpill()}
+       |
        |${generateClose()}
        |}
      """.stripMargin
@@ -124,7 +126,7 @@ class CodegenBytesToBytesMapGenerator(
        |  LongArray longArray;
        |  private int mask;
        |  private TaskMemoryManager taskMemoryManager;
-       |  private final LinkedList<MemoryBlock> dataPages = new LinkedList<>();
+       |  private final LinkedList<MemoryBlock> dataPages = new LinkedList<MemoryBlock>();
        |  private MemoryBlock currentPage = null;
        |  private long pageCursor = 0;
        |  private final byte[] emptyAggregationBuffer;
@@ -311,7 +313,7 @@ class CodegenBytesToBytesMapGenerator(
        |        // Initialize aggregate keys
        |        // append the keys and values to current data page
        |        final Object base = currentPage.getBaseObject();
-       |        long offset = currentPage.getBaseeOffset() + pageCursor;
+       |        long offset = currentPage.getBaseOffset() + pageCursor;
        |        final long recordOffset = offset;
        |        Platform.putInt(base, offset, klen + vlen + 4);
        |        Platform.putInt(base, offset + 4, klen);
@@ -349,7 +351,7 @@ class CodegenBytesToBytesMapGenerator(
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
        |          long foundFullKeyAddress = longArray.get(pos * 2);
        |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
-       |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress)) + 8;
+       |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
        |          long foundLen = Platform.getInt(foundBase, foundOff-4);
        |          if ((int) foundLen == klen &&
        |              arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
@@ -373,8 +375,8 @@ class CodegenBytesToBytesMapGenerator(
   private def generateKVIterator(): String = {
     s"""
        |
-       |  public KVIterator<UnsafeRow, UnsafeRow> iterator() {
-       |    return new KVIterator<UnsafeRow, UnsafeRow>() {
+       |  public org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow> iterator() {
+       |    return new org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow>() {
        |
        |      private final UnsafeRow key = new UnsafeRow(groupingKeySchema.length());
        |      private final UnsafeRow value = new UnsafeRow(aggregationBufferSchema.length());
@@ -388,17 +390,23 @@ class CodegenBytesToBytesMapGenerator(
        |      private int vlen;
        |      private int totalLength;
        |
+       |      private boolean inited = false;
        |
-       |      if (dataPages.size() > 0) {
-       |        currentPage = dataPages.remove();
-       |        pageBaseObject = currentPage.getBaseObject();
-       |        offsetInPage = currentPage.getBaseOffset();
-       |        recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
-       |        offsetInPage += 4;
+       |
+       |      private void init() {
+       |        if (dataPages.size() > 0) {
+       |          currentPage = dataPages.remove();
+       |          pageBaseObject = currentPage.getBaseObject();
+       |          offsetInPage = currentPage.getBaseOffset();
+       |          recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
+       |          offsetInPage += 4;
+       |        }
+       |        inited = true;
        |      }
        |
        |      @Override
        |      public boolean next() {
+       |        if (!inited) init();
        |        //searching for the next non empty page is records is now zero
        |        while (recordsInPage == 0) {
        |          if (!advanceToNextPage()) return false;
@@ -454,6 +462,15 @@ class CodegenBytesToBytesMapGenerator(
     s"""
        |public void close() {
        |  //do nothing
+       |}
+     """.stripMargin
+  }
+
+  private def generateSpill(): String = {
+    s"""
+       |public long spill(long size, MemoryConsumer trigger) throws IOException {
+       |  System.out.println("ERROR: We expect spilling never happens");
+       |  return 0L;
        |}
      """.stripMargin
   }

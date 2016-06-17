@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.aggregate
 
+import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.TaskContext
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
@@ -311,7 +312,15 @@ case class HashAggregateExec(
     )
   }
 
+  def getTaskMemoryManager(): TaskMemoryManager = {
+    TaskContext.get().taskMemoryManager()
+  }
 
+  def getEmptyAggregationBuffer(): InternalRow = {
+    val initExpr = declFunctions.flatMap(f => f.initialValues)
+    val initialBuffer = UnsafeProjection.create(initExpr)(EmptyRow)
+    initialBuffer
+  }
   /**
    * This is called by generated Java class, should be public.
    */
@@ -513,22 +522,6 @@ case class HashAggregateExec(
       }
 
 
-    // Create a name for iterator from vectorized HashMap
-    val iterTermForVectorizedHashMap = ctx.freshName("vectorizedHashMapIter")
-    if (isVectorizedHashMapEnabled) {
-      ctx.addMutableState(vectorizedHashMapClassName, vectorizedHashMapTerm,
-        s"$vectorizedHashMapTerm = new $vectorizedHashMapClassName();")
-      if (isCodegenedB2BMapEnabled) {
-        ctx.addMutableState(
-          "org.apache.spark.unsafe.KVIterator",
-          iterTermForVectorizedHashMap, "")
-      } else {
-        ctx.addMutableState(
-          "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
-          iterTermForVectorizedHashMap, "")
-      }
-    }
-
     // create hashMap
     val thisPlan = ctx.addReferenceObj("plan", this)
     hashMapTerm = ctx.freshName("hashMap")
@@ -536,6 +529,25 @@ case class HashAggregateExec(
     ctx.addMutableState(hashMapClassName, hashMapTerm, "")
     sorterTerm = ctx.freshName("sorter")
     ctx.addMutableState(classOf[UnsafeKVExternalSorter].getName, sorterTerm, "")
+
+    // Create a name for iterator from vectorized HashMap
+    val iterTermForVectorizedHashMap = ctx.freshName("vectorizedHashMapIter")
+    if (isVectorizedHashMapEnabled) {
+      if (isCodegenedB2BMapEnabled) {
+        ctx.addMutableState(vectorizedHashMapClassName, vectorizedHashMapTerm,
+          s"$vectorizedHashMapTerm = new $vectorizedHashMapClassName(" +
+            s"agg_plan.getTaskMemoryManager(), agg_plan.getEmptyAggregationBuffer());")
+        ctx.addMutableState(
+          "org.apache.spark.unsafe.KVIterator",
+          iterTermForVectorizedHashMap, "")
+      } else {
+        ctx.addMutableState(vectorizedHashMapClassName, vectorizedHashMapTerm,
+          s"$vectorizedHashMapTerm = new $vectorizedHashMapClassName();")
+        ctx.addMutableState(
+          "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
+          iterTermForVectorizedHashMap, "")
+      }
+    }
 
     // Create a name for iterator from HashMap
     val iterTerm = ctx.freshName("mapIter")
@@ -687,6 +699,8 @@ case class HashAggregateExec(
     ctx.INPUT_ROW = null
     val unsafeRowKeyCode = GenerateUnsafeProjection.createCode(
       ctx, groupingExpressions.map(e => BindReferences.bindReference[Expression](e, child.output)))
+    val unsafeRowKeyForFastHashCode = GenerateUnsafeProjection.createCode(
+      ctx, groupingExpressions.map(e => BindReferences.bindReference[Expression](e, child.output)))
     val vectorizedRowKeys = ctx.generateExpressions(
       groupingExpressions.map(e => BindReferences.bindReference[Expression](e, child.output)))
     val unsafeRowKeys = unsafeRowKeyCode.value
@@ -727,6 +741,8 @@ case class HashAggregateExec(
       if (isVectorizedHashMapEnabled) {
         Option(
           s"""
+             |// generate the unsaferow
+             |
              |if ($checkFallbackForGeneratedHashMap) {
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
@@ -743,11 +759,15 @@ case class HashAggregateExec(
     val findOrInsertInCodegenB2BMap: Option[String] = {
         Option(
           s"""
+             |
              |if ($checkFallbackForGeneratedHashMap) {
+             |  // generate unsaferow for b2bmap
+             |  ${unsafeRowKeyForFastHashCode.code.trim}
+             |
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
-             |        rowKey,
+             |        ${unsafeRowKeyForFastHashCode.value},
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
              |}
@@ -839,7 +859,9 @@ case class HashAggregateExec(
       s"""
          | if ($vectorizedRowBuffer == null) {
          |   // generate grouping key
+         |   // unsafeRowKeyCode
          |   ${unsafeRowKeyCode.code.trim}
+         |   // hashEval
          |   ${hashEval.code.trim}
          |   if ($checkFallbackForBytesToBytesMap) {
          |     // try to get the buffer from hash map
