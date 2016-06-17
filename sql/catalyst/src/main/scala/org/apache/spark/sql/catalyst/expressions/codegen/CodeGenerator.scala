@@ -849,7 +849,10 @@ object CodeGenerator extends Logging {
       classOf[MapData].getName,
       classOf[UnsafeMapData].getName,
       classOf[MutableRow].getName,
-      classOf[Expression].getName
+      classOf[Expression].getName,
+      classOf[org.apache.spark.memory.TaskMemoryManager].getName, // add imports for b2bmap
+      classOf[org.apache.spark.unsafe.array.LongArray].getName,  // TODO: not the best place
+      classOf[org.apache.spark.unsafe.memory.MemoryBlock].getName // quick hack here
     ))
     evaluator.setExtendedClass(classOf[GeneratedClass])
 
