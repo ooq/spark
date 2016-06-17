@@ -571,14 +571,16 @@ case class HashAggregateExec(
           ${
             if (isVectorizedHashMapEnabled) {
               if (isCodegenedB2BMapEnabled) {
-                s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.rowIterator();"
-              } else {
                 s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.iterator();"
+              } else {
+                s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.rowIterator();"
               }
+            } else {
+              s"//this might appear at reducer side even fast hash is enabled"
             }
           }
 
-
+          //finish and aggregate here
           $iterTerm = $thisPlan.finishAggregate($hashMapTerm, $sorterTerm, $peakMemory, $spillSize);
         }
        """)
@@ -899,7 +901,9 @@ case class HashAggregateExec(
              | UnsafeRow $vectorizedRowBuffer = null;
            """.stripMargin
         } else {
-          "org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $vectorizedRowBuffer = null;"
+          s"""
+             | org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $vectorizedRowBuffer = null;
+           """.stripMargin
         }
       }
 

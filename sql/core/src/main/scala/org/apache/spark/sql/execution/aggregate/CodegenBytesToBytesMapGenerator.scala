@@ -53,11 +53,6 @@ class CodegenBytesToBytesMapGenerator(
 
   def generate(): String = {
     s"""
-       |  import org.apache.spark.unsafe.Platform;
-       |  import org.apache.spark.memory.TaskMemoryManager;
-       |  import org.apache.spark.memory.MemoryConsumer;
-       |  import org.apache.spark.unsafe.array.LongArray;
-       |  import org.apache.spark.unsafe.memory.MemoryBlock;
        |
        |public class $generatedClassName extends MemoryConsumer{
        |${initializeAggregateHashMap()}
