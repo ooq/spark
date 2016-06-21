@@ -762,12 +762,10 @@ case class HashAggregateExec(
              |
              |if ($checkFallbackForGeneratedHashMap) {
              |  // generate unsaferow for b2bmap
-             |  ${unsafeRowKeyForFastHashCode.code.trim}
              |
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
-             |        ${unsafeRowKeyForFastHashCode.value},
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
              |}

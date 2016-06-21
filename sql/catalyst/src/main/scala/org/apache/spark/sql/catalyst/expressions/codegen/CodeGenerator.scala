@@ -854,7 +854,9 @@ object CodeGenerator extends Logging {
       classOf[org.apache.spark.unsafe.array.LongArray].getName,  // TODO: not the best place
       classOf[org.apache.spark.unsafe.memory.MemoryBlock].getName, // quick hack here
       classOf[org.apache.spark.memory.MemoryConsumer].getName,
-      classOf[java.io.IOException].getName
+      classOf[java.io.IOException].getName,
+      classOf[UnsafeRowWriter].getName,
+      classOf[BufferHolder].getName
     ))
     evaluator.setExtendedClass(classOf[GeneratedClass])
 

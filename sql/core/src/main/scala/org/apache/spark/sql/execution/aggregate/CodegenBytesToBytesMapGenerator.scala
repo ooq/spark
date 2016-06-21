@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.aggregate
 
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, DeclarativeAggregate}
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.types._
@@ -33,6 +34,26 @@ class CodegenBytesToBytesMapGenerator(
   val bufferValues = bufferSchema.map(k => Buffer(k.dataType, ctx.freshName("value")))
   val groupingKeySignature =
     groupingKeys.map(key => s"${ctx.javaType(key.dataType)} ${key.name}").mkString(", ")
+  val foundKeys = groupingKeySchema.map(k => Buffer(k.dataType, ctx.freshName("foundkey")))
+  val foundKeySignature =
+    foundKeys.map(key => s"${ctx.javaType(key.dataType)} ${key.name}").mkString(", ")
+
+  val keyBufferName = "currentKeyBuffer"
+  val foundKeyAssignment = foundKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+    s"${key.name} = ${ctx.getValue(keyBufferName, key.dataType, ordinal.toString())}"}
+    .mkString(";\n")
+
+  val numVarLenFields = groupingKeys.map(_.dataType).count {
+    case dt if UnsafeRow.isFixedLength(dt) => false
+    // TODO: consider large decimal and interval type
+    case _ => true
+  }
+
+  val createUnsafeRowForKey = groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+    s"agg_rowWriter.write(${ordinal}, ${key.name})"}
+    .mkString(";\n")
+
+
   val buffVars: Seq[ExprCode] = {
     val functions = aggregateExpressions.map(_.aggregateFunction.asInstanceOf[DeclarativeAggregate])
     val initExpr = functions.flatMap(f => f.initialValues)
@@ -62,6 +83,8 @@ class CodegenBytesToBytesMapGenerator(
        |${generateAcquireNewPage()}
        |
        |${generateArrayEquals()}
+       |
+       |${generateKeyEquals()}
        |
        |${generateHashFunction()}
        |
@@ -137,6 +160,9 @@ class CodegenBytesToBytesMapGenerator(
        |
        |  // a re-used pointer to the current aggregation buffer
        |  private final UnsafeRow currentAggregationBuffer;
+       |  private final UnsafeRow currentKeyBuffer;
+       |
+       |  ${foundKeys.map(key => "private " + s"${ctx.javaType(key.dataType)}" + " " + key.name).mkString(";\n")};
        |
        |  public $generatedClassName(
        |    TaskMemoryManager taskMemoryManager,
@@ -151,6 +177,9 @@ class CodegenBytesToBytesMapGenerator(
        |
        |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
        |    this.emptyAggregationBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
+       |
+       |    this.currentAggregationBuffer = new UnsafeRow(aggregateBufferSchema.length());
+       |    this.currentKeyBuffer = new UnsafeRow(groupingKeySchema.length());
        |
        |    vbase = this.emptyAggregationBuffer;
        |    voff = Platform.BYTE_ARRAY_OFFSET;
@@ -192,6 +221,27 @@ class CodegenBytesToBytesMapGenerator(
      """.stripMargin
   }
 
+  private def generateKeyEquals(): String = {
+    def genEqualsForKeys(groupingKeys: Seq[Buffer], foundKeys: Seq[Buffer]): String = {
+      val gk = groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+        (ordinal, key.name)}.toSeq
+      val fk = foundKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+        (ordinal, key.name)}.toSeq
+      val join = (gk ++ fk)
+        .groupBy(_._1).mapValues(_.map(_._2).toList)
+        .map(a => a._2(0) + " == " + a._2(1)).mkString(" && ")
+      join
+    }
+
+    s"""
+       |private boolean keyEquals($groupingKeySignature, $foundKeySignature) {
+       |
+       |  return (${genEqualsForKeys(groupingKeys, foundKeys)});
+       |
+       |}
+     """.stripMargin
+  }
+
   private def generateArrayEquals(): String = {
     s"""
        |private boolean arrayEquals(
@@ -218,6 +268,7 @@ class CodegenBytesToBytesMapGenerator(
      """.stripMargin
   }
 
+
   /**
     * Generate a method that acquires a new memory page
     *
@@ -235,6 +286,7 @@ class CodegenBytesToBytesMapGenerator(
        |    Platform.putInt(currentPage.getBaseObject(), currentPage.getBaseOffset(), 0);
        |    pageCursor = 4;
        |
+       |    //System.out.println("acquired a new page");
        |    dataPages.add(currentPage);
        |     //TODO: add code to recycle the pages when we destroy this map
        |    return true;
@@ -291,21 +343,42 @@ class CodegenBytesToBytesMapGenerator(
     }
 
     s"""
-       |public UnsafeRow findOrInsert(UnsafeRow rowKey, ${
-      groupingKeySignature}) {
+       |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
+       |public UnsafeRow findOrInsert(
+       |${groupingKeySignature}) {
        |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
        |  int step = 1;
        |  int pos = (int) h & mask;
-       |  System.out.println("print rowkey ------");
-       |  System.out.println(rowKey);
-       |  ${groupingKeys.map("System.out.println(" + _.name + ");").mkString("\n")}
-       |  System.out.println("end print ------");
-       |  Object kbase = rowKey.getBaseObject(); // could be cogen
-       |  long koff = rowKey.getBaseOffset();  // could be cogen
-       |  int klen = rowKey.getSizeInBytes(); // could be cogen
+       |  //System.out.println("print rowkey ------");
+       |  //System.out.println(rowKey);
+       |  ${groupingKeys.map("//System.out.println(" + _.name + ");").mkString("\n")}
+       |  //System.out.println("end print ------");
+       |  //Object kbase = rowKey.getBaseObject(); // could be cogen
+       |  //long koff = rowKey.getBaseOffset();  // could be cogen
+       |  //int klen = rowKey.getSizeInBytes(); // could be cogen
        |  while (step < maxSteps) {
        |    if (longArray.get(pos * 2) == 0) { //new entry
+       |    //System.out.println("new entry");
        |      if (numRows < capacity) {
+       |
+       |
+       |        // creating the unsafe for new entry
+       |        UnsafeRow agg_result = new UnsafeRow(${groupingKeySchema.length});
+       |        BufferHolder agg_holder = new BufferHolder(agg_result, ${numVarLenFields * 32});
+       |        UnsafeRowWriter agg_rowWriter = new UnsafeRowWriter(agg_holder, ${groupingKeySchema.length});
+       |
+       |        //TODO: handling nullable types
+       |        agg_holder.reset();
+       |        agg_rowWriter.zeroOutNullBytes();
+       |
+       |        ${createUnsafeRowForKey};
+       |
+       |        agg_result.setTotalSize(agg_holder.totalSize());
+       |
+       |        Object kbase = agg_result.getBaseObject(); // could be cogen
+       |        long koff = agg_result.getBaseOffset();  // could be cogen
+       |        int klen = agg_result.getSizeInBytes(); // could be cogen
+       |
        |
        |        // do append
        |        final long recordLength = 8 + klen + vlen + 8;
@@ -316,6 +389,7 @@ class CodegenBytesToBytesMapGenerator(
        |          }
        |        }
        |
+       |        //System.out.println("initialize aggregate keys");
        |        // Initialize aggregate keys
        |        // append the keys and values to current data page
        |        final Object base = currentPage.getBaseObject();
@@ -331,6 +405,7 @@ class CodegenBytesToBytesMapGenerator(
        |        // put this value at the beginning of the list
        |        Platform.putLong(base, offset, 0);
        |
+       |        //System.out.println("Update bookkeeping data structures");
        |        // Update bookkeeping data structures -----------------------------
        |        offset = currentPage.getBaseOffset();
        |        Platform.putInt(base, offset, Platform.getInt(base, offset) + 1);
@@ -343,6 +418,8 @@ class CodegenBytesToBytesMapGenerator(
        |        // now we want point the value UnsafeRow to the correct location
        |        // basically valuebase, valueoffset and value length
        |        currentAggregationBuffer.pointTo(base, recordOffset + 8 + klen, vlen);
+       |        //System.out.println("returning value buffer");
+       |
        |        return currentAggregationBuffer;
        |      } else {
        |        // No more space
@@ -352,6 +429,7 @@ class CodegenBytesToBytesMapGenerator(
        |    } else {
        |      // we will check equality here and return buffer if matched
        |      // 1st level: hash code match
+       |      //System.out.println("cache hit");
        |      long stored = longArray.get(pos * 2 + 1);
        |      if ((int) (stored) == h) {
        |          // 2nd level: keys match
@@ -361,10 +439,18 @@ class CodegenBytesToBytesMapGenerator(
        |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
        |          int foundLen = Platform.getInt(foundBase, foundOff-4);
        |          int foundTotalLen = Platform.getInt(foundBase, foundOff-8);
-       |          if (foundLen == klen &&
-       |              arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
-       |            currentAggregationBuffer.pointTo(foundBase, foundOff + klen, foundTotalLen - klen);
-       |          }
+       |          //if (foundLen == klen) {
+       |              //if (arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
+       |
+       |              currentKeyBuffer.pointTo(foundBase, foundOff, foundLen);
+       |              ${foundKeyAssignment};
+       |              if(keyEquals(${groupingKeys.map(_.name).mkString(", ")},
+       |                ${foundKeys.map(_.name).mkString(", ")})) {
+       |              //System.out.println("complete match");
+       |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
+       |              return currentAggregationBuffer;
+       |            }
+       |         // }
        |      }
        |
        |    }
@@ -375,6 +461,7 @@ class CodegenBytesToBytesMapGenerator(
        |    step++;
        |  }
        |  // Didn't find it
+       |  System.err.println("Did not find it with max retries");
        |  return null;
        |}
      """.stripMargin

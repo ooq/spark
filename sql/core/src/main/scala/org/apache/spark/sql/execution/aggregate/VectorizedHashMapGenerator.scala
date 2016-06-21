@@ -197,8 +197,8 @@ class VectorizedHashMapGenerator(
        |private boolean equals(int idx, $groupingKeySignature) {
        |  return ${genEqualsForKeys(groupingKeys)};
        |}
-     """.stripMargin
-  }
+     """.stripMargin}
+
 
   /**
    * Generates a method that returns a mutable
