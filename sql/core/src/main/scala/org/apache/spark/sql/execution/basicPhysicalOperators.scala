@@ -390,7 +390,8 @@ case class RangeExec(range: org.apache.spark.sql.catalyst.plans.logical.Range)
       |   $initTerm = true;
       |   initRange(partitionIndex);
       | }
-      |
+      | //System.out.println("init time " + (System.nanoTime() - startTime)/1000000 + "ms");
+      | long startTime = System.nanoTime();
       | while (!$overflow && $checkEnd) {
       |  long $value = $number;
       |  $number += ${step}L;

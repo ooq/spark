@@ -226,6 +226,7 @@ case class HashAggregateExec(
        |   $initAgg = true;
        |   long $beforeAgg = System.nanoTime();
        |   $doAgg();
+       |
        |   $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
        |
        |   // output the result
@@ -573,12 +574,27 @@ case class HashAggregateExec(
       s
     }
 
+    def generateLoopPrintTime(): String = {
+      s"""
+         |//System.out.println("loop time " + (System.nanoTime() - startTime)/1000000 + "ms");
+         """.stripMargin
+    }
+
     ctx.addNewFunction(doAgg,
       s"""
         ${generateGenerateCode}
         private void $doAgg() throws java.io.IOException {
+          //long startTime = System.nanoTime();
           $hashMapTerm = $thisPlan.createHashMap();
           ${child.asInstanceOf[CodegenSupport].produce(ctx, this)}
+
+          ${
+            if (isVectorizedHashMapEnabled) {
+              generateLoopPrintTime
+            } else {
+              s""
+            }
+          }
 
           ${
             if (isVectorizedHashMapEnabled) {
@@ -669,6 +685,7 @@ case class HashAggregateExec(
        $initAgg = true;
        long $beforeAgg = System.nanoTime();
        $doAgg();
+       //System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
        $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
      }
 
@@ -804,10 +821,12 @@ case class HashAggregateExec(
           s"""
              |// common sub-expressions
              |$effectiveCodes
+             |
              |// evaluate aggregate function
              |${evaluateVariables(vectorizedRowEvals)}
              |// update b2b map row
              |${updateVectorizedRow.mkString("\n").trim}
+             |
            """.stripMargin)
       } else None
     }
@@ -831,10 +850,13 @@ case class HashAggregateExec(
           s"""
              |// common sub-expressions
              |$effectiveCodes
+             |
+             |
              |// evaluate aggregate function
              |${evaluateVariables(vectorizedRowEvals)}
              |// update vectorized row
              |${updateVectorizedRow.mkString("\n").trim}
+             |
            """.stripMargin)
       } else None
     }
@@ -944,6 +966,7 @@ case class HashAggregateExec(
        // update unsafe row
        $updateRowInUnsafeRowMap
      }
+
      """
   }
 

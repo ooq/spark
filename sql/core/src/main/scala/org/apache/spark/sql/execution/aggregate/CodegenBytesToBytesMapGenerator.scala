@@ -162,6 +162,8 @@ class CodegenBytesToBytesMapGenerator(
        |  private final UnsafeRow currentAggregationBuffer;
        |  private final UnsafeRow currentKeyBuffer;
        |
+       |
+       |
        |  ${foundKeys.map(key => "private " + s"${ctx.javaType(key.dataType)}" + " " + key.name).mkString(";\n")};
        |
        |  public $generatedClassName(
@@ -346,7 +348,9 @@ class CodegenBytesToBytesMapGenerator(
        |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
+       |  //long h = -1640531527L;
        |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  //System.out.println(h);
        |  int step = 1;
        |  int pos = (int) h & mask;
        |  //System.out.println("print rowkey ------");
@@ -434,19 +438,34 @@ class CodegenBytesToBytesMapGenerator(
        |      if ((int) (stored) == h) {
        |          // 2nd level: keys match
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
+       |
        |          long foundFullKeyAddress = longArray.get(pos * 2);
+       |          //System.out.println(foundFullKeyAddress);
        |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
        |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
+       |          //System.out.println(foundOff);
        |          int foundLen = Platform.getInt(foundBase, foundOff-4);
+       |          //System.out.println(foundLen);
        |          int foundTotalLen = Platform.getInt(foundBase, foundOff-8);
+       |          //System.out.println(foundTotalLen);
+       |          /*
+       |          Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
+       |          long foundOff = 28;
+       |          int foundLen = 16;
+       |          int foundTotalLen = 36;
+       |          */
        |          //if (foundLen == klen) {
        |              //if (arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
        |
+       |
        |              currentKeyBuffer.pointTo(foundBase, foundOff, foundLen);
        |              ${foundKeyAssignment};
+       |
+       |              //long agg_foundkey = Platform.getLong(foundBase, foundOff + 8); //HACK
        |              if(keyEquals(${groupingKeys.map(_.name).mkString(", ")},
        |                ${foundKeys.map(_.name).mkString(", ")})) {
        |              //System.out.println("complete match");
+       |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
        |              return currentAggregationBuffer;
        |            }
