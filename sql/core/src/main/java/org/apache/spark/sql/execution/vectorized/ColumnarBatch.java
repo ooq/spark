@@ -185,7 +185,7 @@ public final class ColumnarBatch {
     public int getInt(int ordinal) { return columns[ordinal].getInt(rowId); }
 
     @Override
-    public long getLong(int ordinal) { return columns[ordinal].getLong(rowId); }
+    public long getLong(int ordinal) { return columns[ordinal].getLong(rowId);}
 
     @Override
     public float getFloat(int ordinal) { return columns[ordinal].getFloat(rowId); }
