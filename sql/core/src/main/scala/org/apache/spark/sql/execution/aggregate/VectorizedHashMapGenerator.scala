@@ -115,7 +115,7 @@ class VectorizedHashMapGenerator(
        |  private org.apache.spark.sql.execution.vectorized.ColumnarBatch batch;
        |  private org.apache.spark.sql.execution.vectorized.ColumnarBatch aggregateBufferBatch;
        |  private int[] buckets;
-       |  private int capacity = 1 << 16;
+       |  private int capacity = 1 << 20;
        |  private double loadFactor = 0.5;
        |  private int numBuckets = (int) (capacity / loadFactor);
        |  private int maxSteps = 2;
@@ -273,10 +273,13 @@ class VectorizedHashMapGenerator(
        |        return aggregateBufferBatch.getRow(buckets[idx]);
        |      } else {
        |        // No more space
+       |        System.out.println("No more space");
        |        return null;
        |      }
        |    } else if (equals(idx, ${groupingKeys.map(_.name).mkString(", ")})) {
        |      return aggregateBufferBatch.getRow(buckets[idx]);
+       |    } else {
+       |      System.out.println("retry");
        |    }
        |    idx = (idx + 1) & (numBuckets - 1);
        |    step++;
@@ -299,6 +302,7 @@ class VectorizedHashMapGenerator(
   private def generateClose(): String = {
     s"""
        |public void close() {
+       |  System.out.println("Total number of rows: " + numRows);
        |  batch.close();
        |}
      """.stripMargin

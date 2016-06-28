@@ -39,8 +39,12 @@ class CodegenBytesToBytesMapGenerator(
     foundKeys.map(key => s"${ctx.javaType(key.dataType)} ${key.name}").mkString(", ")
 
   val keyBufferName = "currentKeyBuffer"
+  //val foundKeyAssignment = foundKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+  //  s"${key.name} = ${ctx.getValue(keyBufferName, key.dataType, ordinal.toString())}"}
+  //  .mkString(";\n")
+
   val foundKeyAssignment = foundKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-    s"${key.name} = ${ctx.getValue(keyBufferName, key.dataType, ordinal.toString())}"}
+    s"${key.name} = Platform.getLong(foundBase, foundOff + ${(ordinal*8+8).toString()})"}
     .mkString(";\n")
 
   val numVarLenFields = groupingKeys.map(_.dataType).count {
@@ -137,9 +141,10 @@ class CodegenBytesToBytesMapGenerator(
     s"""
        |
        |
-       |  private int capacity = 1 << 16;
+       |  private int capacity = 1 << 20;
        |  private double loadFactor = 0.5;
-       |  private int maxSteps= 2;
+       |  private int maxSteps= 1 << 16;
+       |  private long totalAdditionalProbs = 0;
        |  private int numRows = 0;
        |  private org.apache.spark.sql.types.StructType schema = $generatedSchema
        |  private org.apache.spark.sql.types.StructType aggregateBufferSchema =
@@ -223,6 +228,28 @@ class CodegenBytesToBytesMapGenerator(
      """.stripMargin
   }
 
+  private def generateMurmurHashFunction(): String = {
+    val hash = ctx.freshName("hash")
+
+    def genHashForKeys(groupingKeys: Seq[Buffer]): String = {
+      groupingKeys.map { key =>
+        val result = ctx.freshName("result")
+        s"""
+           |${genComputeHash(ctx, key.name, key.dataType, result)}
+           |$hash = org.apache.spark.unsafe.hash.Murmur3_x86_32.hashLong($result, $hash);
+          """.stripMargin
+      }.mkString("\n")
+    }
+
+    s"""
+       |private int hash($groupingKeySignature) {
+       |  int $hash = 42;
+       |  ${genHashForKeys(groupingKeys)}
+       |  return $hash;
+       |}
+     """.stripMargin
+  }
+
   private def generateKeyEquals(): String = {
     def genEqualsForKeys(groupingKeys: Seq[Buffer], foundKeys: Seq[Buffer]): String = {
       val gk = groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
@@ -234,10 +261,16 @@ class CodegenBytesToBytesMapGenerator(
         .map(a => a._2(0) + " == " + a._2(1)).mkString(" && ")
       join
     }
+    def printAllKeys(groupingKeys: Seq[Buffer], foundKeys: Seq[Buffer]): String = {
+      val printGroupingKeys =
+        groupingKeys.map(key => s"System.out.println(${key.name})").mkString(";\n")
+      val printFoundKeys =
+        foundKeys.map(key => s"System.out.println(${key.name})").mkString(";\n")
+      s"${printGroupingKeys};\n${printFoundKeys}"
+    }
 
     s"""
        |private boolean keyEquals($groupingKeySignature, $foundKeySignature) {
-       |
        |  return (${genEqualsForKeys(groupingKeys, foundKeys)});
        |
        |}
@@ -349,9 +382,11 @@ class CodegenBytesToBytesMapGenerator(
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
        |  //long h = -1640531527L;
-       |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  //System.out.println(h);
-       |  int step = 1;
+       |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  //int h = (int) agg_key & 0;
+       |
+       |  //System.out.println("" + agg_key + ":" + h);
+       |  int step = 0;
        |  int pos = (int) h & mask;
        |  //System.out.println("print rowkey ------");
        |  //System.out.println(rowKey);
@@ -418,6 +453,7 @@ class CodegenBytesToBytesMapGenerator(
        |        currentPage, recordOffset);
        |        longArray.set(pos * 2, storedKeyAddress);
        |        longArray.set(pos * 2 + 1, h);
+       |        numRows++;
        |
        |        // now we want point the value UnsafeRow to the correct location
        |        // basically valuebase, valueoffset and value length
@@ -435,7 +471,8 @@ class CodegenBytesToBytesMapGenerator(
        |      // 1st level: hash code match
        |      //System.out.println("cache hit");
        |      long stored = longArray.get(pos * 2 + 1);
-       |      if ((int) (stored) == h) {
+       |      // System.out.println(" " + ((int) (stored) == h) + " ");
+       |      if ((int)stored == h) {
        |          // 2nd level: keys match
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
        |
@@ -454,6 +491,7 @@ class CodegenBytesToBytesMapGenerator(
        |          int foundLen = 16;
        |          int foundTotalLen = 36;
        |          */
+       |          //System.out.println("here");
        |          //if (foundLen == klen) {
        |              //if (arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
        |
@@ -467,7 +505,10 @@ class CodegenBytesToBytesMapGenerator(
        |              //System.out.println("complete match");
        |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
+       |              totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
+       |            } else {
+       |              //System.err.println("not equals");
        |            }
        |         // }
        |      }
@@ -476,8 +517,10 @@ class CodegenBytesToBytesMapGenerator(
        |    // move on to the next position
        |    // TODO: change the strategies
        |    // now triangle probing
-       |    pos = (pos + step) & mask;
+       |    //System.out.println("one miss");
        |    step++;
+       |    //pos = (pos + 1) & mask;
+       |    pos = (pos + step) & mask;
        |  }
        |  // Didn't find it
        |  System.err.println("Did not find it with max retries");
@@ -549,6 +592,8 @@ class CodegenBytesToBytesMapGenerator(
        |
        |      @Override
        |      public void close() {
+       |        System.out.println("Number of rows: " + numRows);
+       |        System.out.println("Avg additional probes: " + totalAdditionalProbs);
        |        // Do nothing.
        |      }
        |

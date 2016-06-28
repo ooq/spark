@@ -569,10 +569,10 @@ public final class BytesToBytesMap extends MemoryConsumer {
       keyLength = Platform.getInt(base, offset);
       valueOffset = offset + 4 + keyLength;
       valueLength = length - 4 - keyLength;
-      return this;
-    }
+     return this;
+     }
 
-    /**
+     /**
      * Find the next pair that has the same key as current one.
      */
     public boolean nextValue() {
@@ -900,35 +900,35 @@ public final class BytesToBytesMap extends MemoryConsumer {
     longArray.zeroOut();
 
     while (dataPages.size() > 0) {
-      MemoryBlock dataPage = dataPages.removeLast();
-      freePage(dataPage);
+        MemoryBlock dataPage = dataPages.removeLast();
+        freePage(dataPage);
+      }
+      currentPage = null;
+      pageCursor = 0;
     }
-    currentPage = null;
-    pageCursor = 0;
-  }
 
-  /**
-   * Grows the size of the hash table and re-hash everything.
-   */
-  @VisibleForTesting
-  void growAndRehash() {
-    assert(longArray != null);
+    /**
+     * Grows the size of the hash table and re-hash everything.
+     */
+    @VisibleForTesting
+    void growAndRehash() {
+      assert(longArray != null);
 
-    long resizeStartTime = -1;
-    if (enablePerfMetrics) {
-      resizeStartTime = System.nanoTime();
-    }
-    // Store references to the old data structures to be used when we re-hash
-    final LongArray oldLongArray = longArray;
-    final int oldCapacity = (int) oldLongArray.size() / 2;
+      long resizeStartTime = -1;
+      if (enablePerfMetrics) {
+        resizeStartTime = System.nanoTime();
+      }
+      // Store references to the old data structures to be used when we re-hash
+      final LongArray oldLongArray = longArray;
+      final int oldCapacity = (int) oldLongArray.size() / 2;
 
-    // Allocate the new data structures
-    allocate(Math.min(growthStrategy.nextCapacity(oldCapacity), MAX_CAPACITY));
+      // Allocate the new data structures
+      allocate(Math.min(growthStrategy.nextCapacity(oldCapacity), MAX_CAPACITY));
 
-    // Re-mask (we don't recompute the hashcode because we stored all 32 bits of it)
-    for (int i = 0; i < oldLongArray.size(); i += 2) {
-      final long keyPointer = oldLongArray.get(i);
-      if (keyPointer == 0) {
+      // Re-mask (we don't recompute the hashcode because we stored all 32 bits of it)
+      for (int i = 0; i < oldLongArray.size(); i += 2) {
+        final long keyPointer = oldLongArray.get(i);
+        if (keyPointer == 0) {
         continue;
       }
       final int hashcode = (int) oldLongArray.get(i + 1);

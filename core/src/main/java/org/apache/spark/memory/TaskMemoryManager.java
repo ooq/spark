@@ -386,6 +386,9 @@ public class TaskMemoryManager {
       for (MemoryBlock page : pageTable) {
         if (page != null) {
           logger.warn("leak a page: " + page + " in task " + taskAttemptId);
+          //for (StackTraceElement ste : Thread.currentThread().getStackTrace()) {
+          //  System.out.println(ste);
+          //}
           memoryManager.tungstenMemoryAllocator().free(page);
         }
       }

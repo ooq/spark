@@ -155,8 +155,9 @@ private[spark] class Benchmark(
     println(s"  Stopped after $i iterations, ${runTimes.sum / 1000000} ms")
     // scalastyle:on
     val best = runTimes.min
+    val median = runTimes.sorted.drop(runTimes.length/2).head
     val avg = runTimes.sum / runTimes.size
-    Result(avg / 1000000.0, num / (best / 1000.0), best / 1000000.0)
+    Result(avg / 1000000.0, num / (median / 1000.0), median / 1000000.0)
   }
 }
 
