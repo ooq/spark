@@ -51,7 +51,7 @@ private[spark] class Benchmark(
     minNumIters: Int = 2,
     warmupTime: FiniteDuration = 2.seconds,
     minTime: FiniteDuration = 2.seconds,
-    outputPerIteration: Boolean = false,
+    outputPerIteration: Boolean = true,
     output: Option[OutputStream] = None) {
   import Benchmark._
   val benchmarks = mutable.ArrayBuffer.empty[Benchmark.Case]

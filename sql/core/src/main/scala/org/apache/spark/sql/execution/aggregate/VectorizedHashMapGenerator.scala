@@ -251,7 +251,8 @@ class VectorizedHashMapGenerator(
     s"""
        |public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(${
             groupingKeySignature}) {
-       |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  //long h = hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  int h = (int) agg_key;
        |  int step = 0;
        |  int idx = (int) h & (numBuckets - 1);
        |  while (step < maxSteps) {
@@ -279,10 +280,11 @@ class VectorizedHashMapGenerator(
        |    } else if (equals(idx, ${groupingKeys.map(_.name).mkString(", ")})) {
        |      return aggregateBufferBatch.getRow(buckets[idx]);
        |    } else {
-       |      System.out.println("retry");
+       |      System.out.println("retry for vhm");
        |    }
-       |    idx = (idx + 1) & (numBuckets - 1);
        |    step++;
+       |    idx = (idx + 1) & (numBuckets - 1);  //linear probing
+       |    //idx = (idx + step) & (numBuckets - 1); //triangular probing
        |  }
        |  // Didn't find it
        |  return null;

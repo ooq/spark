@@ -382,8 +382,9 @@ class CodegenBytesToBytesMapGenerator(
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
        |  //long h = -1640531527L;
-       |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  //int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
        |  //int h = (int) agg_key & 0;
+       |  int h = (int) agg_key;
        |
        |  //System.out.println("" + agg_key + ":" + h);
        |  int step = 0;
@@ -508,7 +509,7 @@ class CodegenBytesToBytesMapGenerator(
        |              totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
        |            } else {
-       |              //System.err.println("not equals");
+       |              System.err.println("retry for codegen b2b");
        |            }
        |         // }
        |      }
@@ -519,8 +520,8 @@ class CodegenBytesToBytesMapGenerator(
        |    // now triangle probing
        |    //System.out.println("one miss");
        |    step++;
-       |    //pos = (pos + 1) & mask;
-       |    pos = (pos + step) & mask;
+       |    //pos = (pos + 1) & mask; // linear probing
+       |    pos = (pos + step) & mask; // triangular probing
        |  }
        |  // Didn't find it
        |  System.err.println("Did not find it with max retries");
