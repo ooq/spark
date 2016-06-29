@@ -58,15 +58,37 @@ class SQLQuerySuite extends QueryTest with SharedSQLContext {
 
   test("show functions") {
     def getFunctions(pattern: String): Seq[Row] = {
-      StringUtils.filterPattern(spark.sessionState.functionRegistry.listFunction(), pattern)
+      StringUtils.filterPattern(
+        spark.sessionState.catalog.listFunctions("default").map(_._1.funcName), pattern)
         .map(Row(_))
     }
+
+    def createFunction(names: Seq[String]): Unit = {
+      names.foreach { name =>
+        spark.udf.register(name, (arg1: Int, arg2: String) => arg2 + arg1)
+      }
+    }
+
+    def dropFunction(names: Seq[String]): Unit = {
+      names.foreach { name =>
+        spark.sessionState.catalog.dropTempFunction(name, false)
+      }
+    }
+
+    val functions = Array("ilog", "logi", "logii", "logiii", "crc32i", "cubei", "cume_disti",
+      "isize", "ispace", "to_datei", "date_addi", "current_datei")
+
+    createFunction(functions)
+
     checkAnswer(sql("SHOW functions"), getFunctions("*"))
+    assert(sql("SHOW functions").collect().size > 200)
+
     Seq("^c*", "*e$", "log*", "*date*").foreach { pattern =>
       // For the pattern part, only '*' and '|' are allowed as wildcards.
       // For '*', we need to replace it to '.*'.
       checkAnswer(sql(s"SHOW FUNCTIONS '$pattern'"), getFunctions(pattern))
     }
+    dropFunction(functions)
   }
 
   test("describe functions") {
@@ -2842,9 +2864,5 @@ class SQLQuerySuite extends QueryTest with SharedSQLContext {
     checkAnswer(
       sql(s"SELECT '$literal' AS DUMMY"),
       Row(s"$expected") :: Nil)
-  }
-
-  test("SPARK-15887: hive-site.xml should be loaded") {
-    assert(spark.sessionState.newHadoopConf().get("hive.in.test") == "true")
   }
 }

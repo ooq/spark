@@ -248,6 +248,7 @@ object FunctionRegistry {
     expression[Average]("mean"),
     expression[Min]("min"),
     expression[Skewness]("skewness"),
+    expression[StddevSamp]("std"),
     expression[StddevSamp]("stddev"),
     expression[StddevPop]("stddev_pop"),
     expression[StddevSamp]("stddev_samp"),
@@ -395,6 +396,8 @@ object FunctionRegistry {
     expressions.foreach { case (name, (info, builder)) => fr.registerFunction(name, info, builder) }
     fr
   }
+
+  val functionSet: Set[String] = builtin.listFunction().toSet
 
   /** See usage above. */
   private def expression[T <: Expression](name: String)
