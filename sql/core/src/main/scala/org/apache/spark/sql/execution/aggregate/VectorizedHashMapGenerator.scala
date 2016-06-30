@@ -197,8 +197,8 @@ class VectorizedHashMapGenerator(
        |private boolean equals(int idx, $groupingKeySignature) {
        |  return ${genEqualsForKeys(groupingKeys)};
        |}
-     """.stripMargin}
-
+     """.stripMargin
+  }
 
   /**
    * Generates a method that returns a mutable
@@ -252,7 +252,7 @@ class VectorizedHashMapGenerator(
        |public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(${
             groupingKeySignature}) {
        |  //long h = hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  int h = (int) agg_key;
+       |  long h = agg_key;
        |  int step = 0;
        |  int idx = (int) h & (numBuckets - 1);
        |  while (step < maxSteps) {
@@ -274,17 +274,13 @@ class VectorizedHashMapGenerator(
        |        return aggregateBufferBatch.getRow(buckets[idx]);
        |      } else {
        |        // No more space
-       |        System.out.println("No more space");
        |        return null;
        |      }
        |    } else if (equals(idx, ${groupingKeys.map(_.name).mkString(", ")})) {
        |      return aggregateBufferBatch.getRow(buckets[idx]);
-       |    } else {
-       |      System.out.println("retry for vhm");
        |    }
+       |    idx = (idx + 1) & (numBuckets - 1);
        |    step++;
-       |    idx = (idx + 1) & (numBuckets - 1);  //linear probing
-       |    //idx = (idx + step) & (numBuckets - 1); //triangular probing
        |  }
        |  // Didn't find it
        |  return null;
@@ -304,7 +300,6 @@ class VectorizedHashMapGenerator(
   private def generateClose(): String = {
     s"""
        |public void close() {
-       |  System.out.println("Total number of rows: " + numRows);
        |  batch.close();
        |}
      """.stripMargin

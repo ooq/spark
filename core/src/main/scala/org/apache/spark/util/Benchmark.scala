@@ -143,7 +143,7 @@ private[spark] class Benchmark(
       f(timer)
       val runTime = timer.totalTime()
       runTimes += runTime
-
+      System.gc()
       if (outputPerIteration) {
         // scalastyle:off
         println(s"Iteration $i took ${runTime / 1000} microseconds")

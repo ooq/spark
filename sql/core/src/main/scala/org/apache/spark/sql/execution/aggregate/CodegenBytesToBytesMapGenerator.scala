@@ -143,7 +143,7 @@ class CodegenBytesToBytesMapGenerator(
        |
        |  private int capacity = 1 << 20;
        |  private double loadFactor = 0.5;
-       |  private int maxSteps= 1 << 16;
+       |  private int maxSteps= 1 << 20;
        |  private long totalAdditionalProbs = 0;
        |  private int numRows = 0;
        |  private org.apache.spark.sql.types.StructType schema = $generatedSchema
@@ -382,9 +382,8 @@ class CodegenBytesToBytesMapGenerator(
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
        |  //long h = -1640531527L;
-       |  //int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  //int h = (int) agg_key & 0;
-       |  int h = (int) agg_key;
+       |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  //int h = (int) agg_key;
        |
        |  //System.out.println("" + agg_key + ":" + h);
        |  int step = 0;
@@ -508,8 +507,6 @@ class CodegenBytesToBytesMapGenerator(
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
        |              totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
-       |            } else {
-       |              System.err.println("retry for codegen b2b");
        |            }
        |         // }
        |      }
@@ -520,8 +517,8 @@ class CodegenBytesToBytesMapGenerator(
        |    // now triangle probing
        |    //System.out.println("one miss");
        |    step++;
-       |    //pos = (pos + 1) & mask; // linear probing
-       |    pos = (pos + step) & mask; // triangular probing
+       |    pos = (pos + 1) & mask; // linear probing
+       |    //pos = (pos + step) & mask; // triangular probing
        |  }
        |  // Didn't find it
        |  System.err.println("Did not find it with max retries");
