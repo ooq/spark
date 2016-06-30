@@ -1108,7 +1108,7 @@ class AggregateBenchmark extends BenchmarkBase {
 
   }
 
-  test("cache perf") {
+  test("extreme perf") {
     //
     val N = 20 << 22;
 
@@ -1119,14 +1119,66 @@ class AggregateBenchmark extends BenchmarkBase {
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.range(N)
+      .selectExpr(
+        "id & 524287 as k1",
+        "id & 524287 as k2",
+        "id & 524287 as k3",
+        "id & 524287 as k4",
+        "id & 524287 as k5",
+        "id & 524287 as k6",
+        "id & 524287 as k7",
+        "id & 524287 as k8")
+      .createOrReplaceTempView("test")
+    sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+      " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
+
+    while (i < 20) {
       sparkSession.range(N)
         .selectExpr(
-          "floor(rand() * " + (1<<100) + ") as k1").createOrReplaceTempView("test")
-      sparkSession.sql("select count(*)" +
-        " from test group by k1").collect()
-      sparkSession.sql("select count(*)" +
-        " from test group by k1").collect()
-   
+          "id & " + (1<<i-1)  + " as k1",
+          "id & " + (1<<i-1)  + " as k2",
+          "id & " + (1<<i-1)  + " as k3",
+          "id & " + (1<<i-1)  + " as k4",
+          "id & " + (1<<i-1)  + " as k5",
+          "id & " + (1<<i-1)  + " as k6",
+          "id & " + (1<<i-1)  + " as k7",
+          "id & " + (1<<i-1)  + " as k8")
+        .createOrReplaceTempView("test")
+
+      timeStart = System.nanoTime
+      sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+        " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
+      timeEnd = System.nanoTime
+      nsPerRow = (timeEnd - timeStart)  / N
+      // scalastyle:off
+      println("Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
+      // scalastyle:on
+
+      i += 1
+    }
+  }
+
+
+  ignore("cacahe perf") {
+    //
+    val N = 20 << 22;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 0
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.range(N)
+      .selectExpr(
+        "floor(rand() * " + (1<<100) + ") as k1").createOrReplaceTempView("test")
+    sparkSession.sql("select count(*)" +
+      " from test group by k1").collect()
+    sparkSession.sql("select count(*)" +
+      " from test group by k1").collect()
+
     while (i < 21) {
       sparkSession.range(N)
         .selectExpr(
@@ -1143,6 +1195,5 @@ class AggregateBenchmark extends BenchmarkBase {
       i += 1
     }
   }
-
 
 }
