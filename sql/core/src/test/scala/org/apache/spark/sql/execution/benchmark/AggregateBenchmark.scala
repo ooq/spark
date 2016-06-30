@@ -1115,22 +1115,29 @@ class AggregateBenchmark extends BenchmarkBase {
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
     var nsPerRow: Long = 0L
-    var i = 1
+    var i = 0
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
-
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+      sparkSession.range(N)
+        .selectExpr(
+          "floor(rand() * " + (1<<100) + ") as k1").createOrReplaceTempView("test")
+      sparkSession.sql("select count(*)" +
+        " from test group by k1").collect()
+      sparkSession.sql("select count(*)" +
+        " from test group by k1").collect()
+   
     while (i < 21) {
       sparkSession.range(N)
         .selectExpr(
-          "floor(rand() * " + (2^i) + ") as k1")
+          "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test")
       timeStart = System.nanoTime
-      def f(): Unit = sparkSession.sql("select count(*)" +
+      sparkSession.sql("select count(*)" +
         " from test group by k1").collect()
       timeEnd = System.nanoTime
       nsPerRow = (timeEnd - timeStart)  / N
       // scalastyle:off
-      println("Distinct key = %d" + (2^i)  + ", time per row = " + nsPerRow + "ns.")
+      println("Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
       // scalastyle:on
 
       i += 1
