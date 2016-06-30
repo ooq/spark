@@ -955,7 +955,7 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
-  test("extreme test") {
+  ignore("extreme test") {
     //
     val N = 20 << 22;
     val benchmark = new Benchmark("codegen checker", N);
@@ -1067,7 +1067,7 @@ class AggregateBenchmark extends BenchmarkBase {
 
   ignore("extreme test copy") {
     //
-    val N = 20 << 22;
+    val N = 20 << 20;
 
     sparkSession.range(N)
       .selectExpr(
@@ -1107,5 +1107,35 @@ class AggregateBenchmark extends BenchmarkBase {
     }
 
   }
+
+  test("cache perf") {
+    //
+    val N = 20 << 22;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 1
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+
+    while (i < 21) {
+      sparkSession.range(N)
+        .selectExpr(
+          "floor(rand() * " + (2^i) + ") as k1")
+      timeStart = System.nanoTime
+      def f(): Unit = sparkSession.sql("select count(*)" +
+        " from test group by k1").collect()
+      timeEnd = System.nanoTime
+      nsPerRow = (timeEnd - timeStart)  / N
+      // scalastyle:off
+      println("Distinct key = %d" + (2^i)  + ", time per row = " + nsPerRow + "ns.")
+      // scalastyle:on
+
+      i += 1
+    }
+  }
+
 
 }
