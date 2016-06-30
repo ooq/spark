@@ -118,7 +118,8 @@ class VectorizedHashMapGenerator(
        |  private int capacity = 1 << 20;
        |  private double loadFactor = 0.5;
        |  private int numBuckets = (int) (capacity / loadFactor);
-       |  private int maxSteps = 2;
+       |  private int maxSteps = 1 << 20;
+       |  private long totalProbes = 0;
        |  private int numRows = 0;
        |  private org.apache.spark.sql.types.StructType schema = $generatedSchema
        |  private org.apache.spark.sql.types.StructType aggregateBufferSchema =
@@ -251,8 +252,8 @@ class VectorizedHashMapGenerator(
     s"""
        |public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(${
             groupingKeySignature}) {
-       |  //long h = hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  long h = agg_key;
+       |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  //long h = agg_key;
        |  int step = 0;
        |  int idx = (int) h & (numBuckets - 1);
        |  while (step < maxSteps) {
@@ -277,10 +278,11 @@ class VectorizedHashMapGenerator(
        |        return null;
        |      }
        |    } else if (equals(idx, ${groupingKeys.map(_.name).mkString(", ")})) {
+       |      totalProbes += step;
        |      return aggregateBufferBatch.getRow(buckets[idx]);
        |    }
-       |    idx = (idx + 1) & (numBuckets - 1);
        |    step++;
+       |    idx = (idx + step) & (numBuckets - 1);
        |  }
        |  // Didn't find it
        |  return null;
@@ -300,6 +302,7 @@ class VectorizedHashMapGenerator(
   private def generateClose(): String = {
     s"""
        |public void close() {
+       |  System.out.println("Additional probes: " + totalProbes);
        |  batch.close();
        |}
      """.stripMargin

@@ -178,9 +178,9 @@ class CodegenBytesToBytesMapGenerator(
        |      taskMemoryManager.pageSizeBytes(),
        |      taskMemoryManager.getTungstenMemoryMode());
        |    this.taskMemoryManager = taskMemoryManager;
-       |    longArray = allocateArray(capacity * 2);
+       |    longArray = allocateArray(capacity *2 * 2);
        |    longArray.zeroOut();
-       |    mask = capacity - 1;
+       |    mask = capacity*2 - 1;
        |
        |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
        |    this.emptyAggregationBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
@@ -517,8 +517,8 @@ class CodegenBytesToBytesMapGenerator(
        |    // now triangle probing
        |    //System.out.println("one miss");
        |    step++;
-       |    pos = (pos + 1) & mask; // linear probing
-       |    //pos = (pos + step) & mask; // triangular probing
+       |    //pos = (pos + 1) & mask; // linear probing
+       |    pos = (pos + step) & mask; // triangular probing
        |  }
        |  // Didn't find it
        |  System.err.println("Did not find it with max retries");

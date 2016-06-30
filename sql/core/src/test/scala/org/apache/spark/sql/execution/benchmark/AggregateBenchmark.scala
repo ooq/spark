@@ -910,7 +910,7 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
-  test("A helper test to check performance implication of probing1") {
+  ignore("A helper test to check performance implication of probing1") {
     //
     val N = 20 << 22;
     val benchmark = new Benchmark("codegen checker1", N)
@@ -955,10 +955,11 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
-  test("extreme test") {
+  ignore("extreme test") {
     //
     val N = 20 << 22;
-    val benchmark = new Benchmark("codegen checker", N)
+    val benchmark = new Benchmark("codegen checker", N);
+
 
     /*
     sparkSession.range(N)
@@ -973,6 +974,7 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & 1048575 as k8")
       .createOrReplaceTempView("test")
     */
+    /*
     sparkSession.range(N)
       .selectExpr(
         "id & 524287 as k1",
@@ -985,7 +987,8 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & 524287 as k8")
       .createOrReplaceTempView("test")
 
-    /*
+    */
+
       sparkSession.range(N)
       .selectExpr(
         "id & 0 as k1",
@@ -997,7 +1000,7 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & 0 as k7",
         "id & 0 as k8")
       .createOrReplaceTempView("test")
-    */
+
 
 
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
@@ -1007,7 +1010,11 @@ class AggregateBenchmark extends BenchmarkBase {
 
     //sparkSession.sql("select count(*)" +
     //  " from test group by k1, k2, k3, k4").queryExecution.debug.codegen()
-    def f1(): Unit = sparkSession.sql("select sum(k1),sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+
+    def f(): Unit = sparkSession.sql("select sum(k1), sum(k2)" +
+      " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
+
+    def f1(): Unit = sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
       " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
 
     def f2(): Unit = sparkSession.sql("select count(*)" +
@@ -1023,14 +1030,14 @@ class AggregateBenchmark extends BenchmarkBase {
     //sparkSession.sql("select sum(k1), sum(k1), sum(k1), sum(k1), sum(k1), sum(k1), sum(k1), sum(k1)" +
     //  " from test group by k1").queryExecution.debug.codegen()
 
-
     benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 5) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
       sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "20")
-      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
       f1()
     }
 
+    /*
     benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 5) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
       sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "20")
@@ -1045,6 +1052,7 @@ class AggregateBenchmark extends BenchmarkBase {
       f3()
     }
 
+    */
     /*
     benchmark.addCase(s"codegen = T hashmap = T, rowbased = T", numIters = 5) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
@@ -1054,6 +1062,49 @@ class AggregateBenchmark extends BenchmarkBase {
     }
     */
     benchmark.run()
+  }
+
+  test("extreme test copy") {
+    //
+    val N = 20 << 22;
+
+    sparkSession.range(N)
+      .selectExpr(
+        "id & 0 as k1",
+        "id & 0 as k2",
+        "id & 0 as k3",
+        "id & 0 as k4",
+        "id & 0 as k5",
+        "id & 0 as k6",
+        "id & 0 as k7",
+        "id & 0 as k8")
+      .createOrReplaceTempView("test")
+
+
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "20")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+
+    sparkSession.sql("select sum(k1), sum(k2), sum(k3), sum(k4), sum(k5), sum(k6), sum(k7), sum(k8)" +
+      " from test group by k1").queryExecution.debug.codegen()
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 0
+    while (i < 8) {
+      timeStart = System.nanoTime
+      sparkSession.sql("select sum(k1), sum(k1), sum(k1), sum(k1), sum(k1), sum(k1), sum(k1), sum(k1)" +
+        " from test group by k1").collect()
+      timeEnd = System.nanoTime
+      nsPerRow = (timeEnd - timeStart)  / N
+      // scalastyle:off
+      println("Time per row = " + nsPerRow + "ns.")
+      // scalastyle:on
+
+      i += 1
+    }
+
   }
 
 }
