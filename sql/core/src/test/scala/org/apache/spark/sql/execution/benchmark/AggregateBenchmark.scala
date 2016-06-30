@@ -955,7 +955,7 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
-  ignore("extreme test") {
+  test("extreme test") {
     //
     val N = 20 << 22;
     val benchmark = new Benchmark("codegen checker", N);
@@ -974,7 +974,7 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & 1048575 as k8")
       .createOrReplaceTempView("test")
     */
-    /*
+    
     sparkSession.range(N)
       .selectExpr(
         "id & 524287 as k1",
@@ -987,8 +987,8 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & 524287 as k8")
       .createOrReplaceTempView("test")
 
-    */
-
+    
+/*
       sparkSession.range(N)
       .selectExpr(
         "id & 0 as k1",
@@ -1000,12 +1000,13 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & 0 as k7",
         "id & 0 as k8")
       .createOrReplaceTempView("test")
-
+*/
 
 
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "20")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+    sparkSession.conf.set("spark.unsafe.exceptionOnMemoryLeak", "false")
 
 
     //sparkSession.sql("select count(*)" +
@@ -1037,22 +1038,22 @@ class AggregateBenchmark extends BenchmarkBase {
       f1()
     }
 
-    /*
+    
     benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 5) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
       sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "20")
-      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
       f2()
     }
 
     benchmark.addCase(s"codegen = T hashmap = T, rowbased = F", numIters = 5) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
       sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "20")
-      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+      sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
       f3()
     }
 
-    */
+    
     /*
     benchmark.addCase(s"codegen = T hashmap = T, rowbased = T", numIters = 5) { iter =>
       sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
@@ -1064,7 +1065,7 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
-  test("extreme test copy") {
+  ignore("extreme test copy") {
     //
     val N = 20 << 22;
 
