@@ -1117,7 +1117,7 @@ class AggregateBenchmark extends BenchmarkBase {
     var nsPerRow: Long = 0L
     var i = 0
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
     sparkSession.range(N)
       .selectExpr(
@@ -1132,30 +1132,36 @@ class AggregateBenchmark extends BenchmarkBase {
       .createOrReplaceTempView("test")
     sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
       " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
-
+    i = 11
     while (i < 20) {
       sparkSession.range(N)
         .selectExpr(
-          "id & " + (1<<i-1)  + " as k1",
-          "id & " + (1<<i-1)  + " as k2",
-          "id & " + (1<<i-1)  + " as k3",
-          "id & " + (1<<i-1)  + " as k4",
-          "id & " + (1<<i-1)  + " as k5",
-          "id & " + (1<<i-1)  + " as k6",
-          "id & " + (1<<i-1)  + " as k7",
-          "id & " + (1<<i-1)  + " as k8")
+          "id & " + ((1<<i)-1)  + " as k1",
+          "id & " + ((1<<i)-1)  + " as k2",
+          "id & " + ((1<<i)-1)  + " as k3",
+          "id & " + ((1<<i)-1)  + " as k4",
+          "id & " + ((1<<i)-1)  + " as k5",
+          "id & " + ((1<<i)-1)  + " as k6",
+          "id & " + ((1<<i)-1)  + " as k7",
+          "id & " + ((1<<i)-1)  + " as k8")
         .createOrReplaceTempView("test")
+      sparkSession.sql("select * from test limit 4").show()
 
+      var j = 0 
+      var minTime: Long  = 1000
+      while (j < 5) {
       timeStart = System.nanoTime
       sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
         " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
       timeEnd = System.nanoTime
       nsPerRow = (timeEnd - timeStart)  / N
+      if(nsPerRow < minTime) minTime = nsPerRow
+     j += 1
+      }
       // scalastyle:off
       println("Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
       // scalastyle:on
-
-      i += 1
+       i += 1
     }
   }
 
