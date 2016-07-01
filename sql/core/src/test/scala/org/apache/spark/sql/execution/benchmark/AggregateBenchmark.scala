@@ -1165,10 +1165,10 @@ class AggregateBenchmark extends BenchmarkBase {
     }
   }
 
-
   test("cacahe perf") {
     //
     val N = 20 << 22;
+    //val N = 10;
 
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
@@ -1179,23 +1179,61 @@ class AggregateBenchmark extends BenchmarkBase {
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     sparkSession.range(N)
       .selectExpr(
-        "floor(rand() * " + (1<<100) + ") as k1").createOrReplaceTempView("test")
+        "floor(rand() * " + "1" + ") as k1").createOrReplaceTempView("test")
     sparkSession.sql("select count(*)" +
       " from test group by k1").collect()
     sparkSession.sql("select count(*)" +
       " from test group by k1").collect()
 
-    while (i < 21) {
+    while (i < 2) {
       sparkSession.range(N)
         .selectExpr(
           "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test")
+      var j = 0
+      var minTime: Long = 1000
+      while (j < 5) {
+	      timeStart = System.nanoTime
+	      sparkSession.sql("select count(*)" +
+		" from test group by k1").collect()
+	      timeEnd = System.nanoTime
+	      nsPerRow = (timeEnd - timeStart)  / N
+	      if (minTime > nsPerRow) minTime = nsPerRow
+              j += 1
+      }
+      // scalastyle:off  
+      println("")
+      println("Distinct key = " + (1<<i)  + ", time per row = " + minTime + "ns.")
+      println("")
+      // scalastyle:on
+
+      i += 1
+    }
+  }
+
+
+  ignore("minimal perf") {
+    //
+    val N = 20 << 22;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 0
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+
+    while (i < 6) {
+      sparkSession.range(N)
+        .selectExpr(
+          "cast(0 as long) as k1").createOrReplaceTempView("test")
       timeStart = System.nanoTime
       sparkSession.sql("select count(*)" +
         " from test group by k1").collect()
       timeEnd = System.nanoTime
       nsPerRow = (timeEnd - timeStart)  / N
       // scalastyle:off
-      println("Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
+      println("Distinct key = " + (1<<0)  + ", time per row = " + nsPerRow + "ns.")
       // scalastyle:on
 
       i += 1
