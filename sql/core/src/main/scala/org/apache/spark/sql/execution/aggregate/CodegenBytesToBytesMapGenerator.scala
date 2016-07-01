@@ -163,6 +163,12 @@ class CodegenBytesToBytesMapGenerator(
        |  private long voff;
        |  private int vlen;
        |
+       |  private long foundFullKeyAddress;
+       |  private Object foundBase;
+       |  private long foundOff;
+       |  private foundLen;
+       |  private foundTotalLen;
+       |
        |  // a re-used pointer to the current aggregation buffer
        |  private final UnsafeRow currentAggregationBuffer;
        |  private boolean isPointed = false;
@@ -471,13 +477,10 @@ class CodegenBytesToBytesMapGenerator(
        |      // we will check equality here and return buffer if matched
        |      // 1st level: hash code match
        |      //System.out.println("cache hit");
-       |      long stored = longArray[pos * 2 + 1];
-       |          //if(isPointed){return currentAggregationBuffer;}
-       |      // System.out.println(" " + ((int) (stored) == h) + " ");
-       |      if ((int)stored == h) {
+       |      //if ((int)stored == h) {
        |          // 2nd level: keys match
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
-       |          long foundFullKeyAddress = longArray[pos * 2];
+       |          foundFullKeyAddress = longArray[pos * 2];
        |          //System.out.println(foundFullKeyAddress);
        |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
        |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
@@ -513,7 +516,7 @@ class CodegenBytesToBytesMapGenerator(
        |         // }
        |      }
        |
-       |    }
+       |    //}
        |    // move on to the next position
        |    // TODO: change the strategies
        |    // now triangle probing
