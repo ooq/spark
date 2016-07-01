@@ -151,7 +151,7 @@ class CodegenBytesToBytesMapGenerator(
        |    $generatedAggBufferSchema
        |  private org.apache.spark.sql.types.StructType groupingKeySchema =
        |    $generatedGroupingKeySchema
-       |  LongArray longArray;
+       |  private long[] longArray;
        |  private int mask;
        |  private TaskMemoryManager taskMemoryManager;
        |  private final java.util.LinkedList<MemoryBlock> dataPages = new java.util.LinkedList<MemoryBlock>();
@@ -165,6 +165,7 @@ class CodegenBytesToBytesMapGenerator(
        |
        |  // a re-used pointer to the current aggregation buffer
        |  private final UnsafeRow currentAggregationBuffer;
+       |  private boolean isPointed = false;
        |  private final UnsafeRow currentKeyBuffer;
        |
        |
@@ -178,8 +179,8 @@ class CodegenBytesToBytesMapGenerator(
        |      taskMemoryManager.pageSizeBytes(),
        |      taskMemoryManager.getTungstenMemoryMode());
        |    this.taskMemoryManager = taskMemoryManager;
-       |    longArray = allocateArray(capacity *2 * 2);
-       |    longArray.zeroOut();
+       |    longArray = new long[capacity *2 * 2];
+       |    java.util.Arrays.fill(longArray, 0);
        |    mask = capacity*2 - 1;
        |
        |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
@@ -396,7 +397,7 @@ class CodegenBytesToBytesMapGenerator(
        |  //long koff = rowKey.getBaseOffset();  // could be cogen
        |  //int klen = rowKey.getSizeInBytes(); // could be cogen
        |  while (step < maxSteps) {
-       |    if (longArray.get(pos * 2) == 0) { //new entry
+       |    if (longArray[pos * 2] == 0) { //new entry
        |    //System.out.println("new entry");
        |      if (numRows < capacity) {
        |
@@ -451,8 +452,8 @@ class CodegenBytesToBytesMapGenerator(
        |        pageCursor += recordLength;
        |        final long storedKeyAddress = taskMemoryManager.encodePageNumberAndOffset(
        |        currentPage, recordOffset);
-       |        longArray.set(pos * 2, storedKeyAddress);
-       |        longArray.set(pos * 2 + 1, h);
+       |        longArray[pos * 2] =  storedKeyAddress;
+       |        longArray[pos * 2 + 1] = h;
        |        numRows++;
        |
        |        // now we want point the value UnsafeRow to the correct location
@@ -470,27 +471,27 @@ class CodegenBytesToBytesMapGenerator(
        |      // we will check equality here and return buffer if matched
        |      // 1st level: hash code match
        |      //System.out.println("cache hit");
-       |      long stored = longArray.get(pos * 2 + 1);
+       |      long stored = longArray[pos * 2 + 1];
+       |          //if(isPointed){return currentAggregationBuffer;}
        |      // System.out.println(" " + ((int) (stored) == h) + " ");
        |      if ((int)stored == h) {
        |          // 2nd level: keys match
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
-       |
-       |          long foundFullKeyAddress = longArray.get(pos * 2);
+       |          long foundFullKeyAddress = longArray[pos * 2];
        |          //System.out.println(foundFullKeyAddress);
        |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
        |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
        |          //System.out.println(foundOff);
-       |          int foundLen = Platform.getInt(foundBase, foundOff-4);
+       |          // int foundLen = Platform.getInt(foundBase, foundOff-4);
        |          //System.out.println(foundLen);
-       |          int foundTotalLen = Platform.getInt(foundBase, foundOff-8);
+       |          // int foundTotalLen = Platform.getInt(foundBase, foundOff-8);
        |          //System.out.println(foundTotalLen);
-       |          /*
-       |          Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
-       |          long foundOff = 28;
+       |          
+       |          //Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
+       |          //long foundOff = 28;
        |          int foundLen = 16;
        |          int foundTotalLen = 36;
-       |          */
+       |          
        |          //System.out.println("here");
        |          //if (foundLen == klen) {
        |              //if (arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
@@ -505,6 +506,7 @@ class CodegenBytesToBytesMapGenerator(
        |              //System.out.println("complete match");
        |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
+       |	      //isPointed = true;
        |              totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
        |            }
@@ -515,7 +517,7 @@ class CodegenBytesToBytesMapGenerator(
        |    // move on to the next position
        |    // TODO: change the strategies
        |    // now triangle probing
-       |    //System.out.println("one miss");
+       |    System.out.println("one miss");
        |    step++;
        |    //pos = (pos + 1) & mask; // linear probing
        |    pos = (pos + step) & mask; // triangular probing
