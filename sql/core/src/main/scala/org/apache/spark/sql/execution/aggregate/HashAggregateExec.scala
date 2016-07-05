@@ -684,8 +684,9 @@ case class HashAggregateExec(
      if (!$initAgg) {
        $initAgg = true;
        long $beforeAgg = System.nanoTime();
+       System.out.println("doAgg start");
        $doAgg();
-       //System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
+       System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
        $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
      }
 

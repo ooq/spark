@@ -1176,7 +1176,7 @@ class AggregateBenchmark extends BenchmarkBase {
     var i = 0
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
     sparkSession.range(N)
       .selectExpr(
         "floor(rand() * " + "1" + ") as k1").createOrReplaceTempView("test")
@@ -1185,19 +1185,20 @@ class AggregateBenchmark extends BenchmarkBase {
     sparkSession.sql("select count(*)" +
       " from test group by k1").collect()
 
-    while (i < 2) {
+    while (i < 6) {
       sparkSession.range(N)
         .selectExpr(
           "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test")
       var j = 0
       var minTime: Long = 1000
-      while (j < 5) {
+      while (j < 10) {
+              System.gc()
 	      timeStart = System.nanoTime
 	      sparkSession.sql("select count(*)" +
 		" from test group by k1").collect()
 	      timeEnd = System.nanoTime
 	      nsPerRow = (timeEnd - timeStart)  / N
-	      if (minTime > nsPerRow) minTime = nsPerRow
+	      if (j > 4 && minTime > nsPerRow) minTime = nsPerRow
               j += 1
       }
       // scalastyle:off  

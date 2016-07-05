@@ -807,6 +807,8 @@ object TestSettings {
       "SPARK_SCALA_VERSION" -> scalaBinaryVersion,
       "SPARK_TESTING" -> "1",
       "JAVA_HOME" -> sys.env.get("JAVA_HOME").getOrElse(sys.props("java.home"))),
+    javaOptions in Test += s"-XX:+PrintCompilation",
+    javaOptions in Test += s"-XX:+PrintGCDetails",
     javaOptions in Test += s"-Djava.io.tmpdir=$testTempDir",
     javaOptions in Test += "-Dspark.test.home=" + sparkHome,
     javaOptions in Test += "-Dspark.testing=1",

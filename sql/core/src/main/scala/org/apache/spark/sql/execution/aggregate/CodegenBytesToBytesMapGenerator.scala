@@ -388,7 +388,7 @@ class CodegenBytesToBytesMapGenerator(
        |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
-       |      if(isPointed) {return currentAggregationBuffer;}
+       |      //if(isPointed) {return currentAggregationBuffer;}
        |  //long h = -1640531527L;
        |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
        |  //int h = (int) agg_key;
@@ -486,15 +486,15 @@ class CodegenBytesToBytesMapGenerator(
        |          foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
        |          foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
        |          //System.out.println(foundOff);
-       |          //foundLen = Platform.getInt(foundBase, foundOff-4);
+       |          foundLen = Platform.getInt(foundBase, foundOff-4);
        |          //System.out.println(foundLen);
-       |          //foundTotalLen = Platform.getInt(foundBase, foundOff-8);
+       |          foundTotalLen = Platform.getInt(foundBase, foundOff-8);
        |          //System.out.println(foundTotalLen);
        |          
        |          //Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
        |          //long foundOff = 28;
-       |          foundLen = 16;
-       |          foundTotalLen = 36;
+       |          //foundLen = 16;
+       |          //foundTotalLen = 36;
        |          
        |          //System.out.println("here");
        |          //if (foundLen == klen) {
@@ -510,8 +510,8 @@ class CodegenBytesToBytesMapGenerator(
        |              //System.out.println("complete match");
        |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
-       |	      isPointed = true;
-       |              totalAdditionalProbs += step;
+       |	      //isPointed = true;
+       |              //totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
        |            }
        |         // }
