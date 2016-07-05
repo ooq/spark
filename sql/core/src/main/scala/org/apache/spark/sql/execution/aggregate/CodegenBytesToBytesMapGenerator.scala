@@ -166,8 +166,8 @@ class CodegenBytesToBytesMapGenerator(
        |  private long foundFullKeyAddress;
        |  private Object foundBase;
        |  private long foundOff;
-       |  private foundLen;
-       |  private foundTotalLen;
+       |  private int foundLen;
+       |  private int foundTotalLen;
        |
        |  // a re-used pointer to the current aggregation buffer
        |  private final UnsafeRow currentAggregationBuffer;
@@ -388,6 +388,7 @@ class CodegenBytesToBytesMapGenerator(
        |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
+       |      if(isPointed) {return currentAggregationBuffer;}
        |  //long h = -1640531527L;
        |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
        |  //int h = (int) agg_key;
@@ -482,18 +483,18 @@ class CodegenBytesToBytesMapGenerator(
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
        |          foundFullKeyAddress = longArray[pos * 2];
        |          //System.out.println(foundFullKeyAddress);
-       |          Object foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
-       |          long foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
+       |          foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
+       |          foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
        |          //System.out.println(foundOff);
-       |          // int foundLen = Platform.getInt(foundBase, foundOff-4);
+       |          //foundLen = Platform.getInt(foundBase, foundOff-4);
        |          //System.out.println(foundLen);
-       |          // int foundTotalLen = Platform.getInt(foundBase, foundOff-8);
+       |          //foundTotalLen = Platform.getInt(foundBase, foundOff-8);
        |          //System.out.println(foundTotalLen);
        |          
        |          //Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
        |          //long foundOff = 28;
-       |          int foundLen = 16;
-       |          int foundTotalLen = 36;
+       |          foundLen = 16;
+       |          foundTotalLen = 36;
        |          
        |          //System.out.println("here");
        |          //if (foundLen == klen) {
@@ -509,7 +510,7 @@ class CodegenBytesToBytesMapGenerator(
        |              //System.out.println("complete match");
        |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
-       |	      //isPointed = true;
+       |	      isPointed = true;
        |              totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
        |            }
