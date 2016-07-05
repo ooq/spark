@@ -1186,15 +1186,15 @@ class AggregateBenchmark extends BenchmarkBase {
       " from test group by k1").collect()
 
     while (i < 6) {
-      sparkSession.range(N)
-        .selectExpr(
-          "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test")
       var j = 0
       var minTime: Long = 1000
       while (j < 10) {
               System.gc()
 	      timeStart = System.nanoTime
-	      sparkSession.sql("select count(*)" +
+        sparkSession.range(N)
+          .selectExpr(
+            "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test")
+        sparkSession.sql("select count(*)" +
 		" from test group by k1").collect()
 	      timeEnd = System.nanoTime
 	      nsPerRow = (timeEnd - timeStart)  / N
