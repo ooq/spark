@@ -1198,12 +1198,13 @@ class AggregateBenchmark extends BenchmarkBase {
 		" from test group by k1").collect()
 	      timeEnd = System.nanoTime
 	      nsPerRow = (timeEnd - timeStart)  / N
+        println("[iteration] Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
 	      if (j > 4 && minTime > nsPerRow) minTime = nsPerRow
               j += 1
       }
       // scalastyle:off  
       println("")
-      println("Distinct key = " + (1<<i)  + ", time per row = " + minTime + "ns.")
+      println("[Min] Distinct key = " + (1<<i)  + ", time per row = " + minTime + "ns.")
       println("")
       // scalastyle:on
 

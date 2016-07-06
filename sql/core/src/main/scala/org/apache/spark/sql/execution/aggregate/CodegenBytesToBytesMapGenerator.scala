@@ -391,9 +391,6 @@ class CodegenBytesToBytesMapGenerator(
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
        |  
-       |  //return currentAggregationBuffer;
-       |  if(numRows != 0) {return currentAggregationBuffer;} else {
-       |     numRows++; return insert(${groupingKeys.map(_.name).mkString(", ")}); } /*
        |  //long h = -1640531527L;
        |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
        |  //int h = (int) agg_key;
@@ -410,75 +407,7 @@ class CodegenBytesToBytesMapGenerator(
        |  //int klen = rowKey.getSizeInBytes(); // could be cogen
        |  while (step < maxSteps) {
        |    if (longArray[pos * 2] == 0) { //new entry
-       |    //System.out.println("new entry");
-       |      if (numRows < capacity) {
-       |
-       |
-       |        // creating the unsafe for new entry
-       |        UnsafeRow agg_result = new UnsafeRow(${groupingKeySchema.length});
-       |        BufferHolder agg_holder = new BufferHolder(agg_result, ${numVarLenFields * 32});
-       |        UnsafeRowWriter agg_rowWriter = new UnsafeRowWriter(agg_holder, ${groupingKeySchema.length});
-       |
-       |        //TODO: handling nullable types
-       |        agg_holder.reset();
-       |        agg_rowWriter.zeroOutNullBytes();
-       |
-       |        ${createUnsafeRowForKey};
-       |
-       |        agg_result.setTotalSize(agg_holder.totalSize());
-       |
-       |        Object kbase = agg_result.getBaseObject(); // could be cogen
-       |        long koff = agg_result.getBaseOffset();  // could be cogen
-       |        int klen = agg_result.getSizeInBytes(); // could be cogen
-       |
-       |
-       |        // do append
-       |        final long recordLength = 8 + klen + vlen + 8;
-       |        if (currentPage == null || currentPage.size() - pageCursor < recordLength) {
-       |          // acquire new page
-       |          if( !acquireNewPage(recordLength + 4L)) {
-       |            return null;
-       |          }
-       |        }
-       |
-       |        //System.out.println("initialize aggregate keys");
-       |        // Initialize aggregate keys
-       |        // append the keys and values to current data page
-       |        final Object base = currentPage.getBaseObject();
-       |        long offset = currentPage.getBaseOffset() + pageCursor;
-       |        final long recordOffset = offset;
-       |        Platform.putInt(base, offset, klen + vlen + 4);
-       |        Platform.putInt(base, offset + 4, klen);
-       |        offset += 8;
-       |        Platform.copyMemory(kbase, koff, base, offset, klen);
-       |        offset += klen;
-       |        Platform.copyMemory(vbase, voff, base, offset, vlen);
-       |        offset += vlen;
-       |        // put this value at the beginning of the list
-       |        Platform.putLong(base, offset, 0);
-       |
-       |        //System.out.println("Update bookkeeping data structures");
-       |        // Update bookkeeping data structures -----------------------------
-       |        offset = currentPage.getBaseOffset();
-       |        Platform.putInt(base, offset, Platform.getInt(base, offset) + 1);
-       |        pageCursor += recordLength;
-       |        final long storedKeyAddress = taskMemoryManager.encodePageNumberAndOffset(
-       |        currentPage, recordOffset);
-       |        longArray[pos * 2] =  storedKeyAddress;
-       |        longArray[pos * 2 + 1] = h;
-       |        numRows++;
-       |
-       |        // now we want point the value UnsafeRow to the correct location
-       |        // basically valuebase, valueoffset and value length
-       |        currentAggregationBuffer.pointTo(base, recordOffset + 8 + klen, vlen);
-       |        //System.out.println("returning value buffer");
-       |
-       |        return currentAggregationBuffer;
-       |      } else {
-       |        // No more space
-       |        System.err.println("No more space");
-       |        return null;
-       |      }
+       |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos, h);
        |    } else {
        |      // we will check equality here and return buffer if matched
        |      // 1st level: hash code match
@@ -515,7 +444,7 @@ class CodegenBytesToBytesMapGenerator(
        |              //System.out.println("complete match");
        |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
-       |	      isPointed = true;
+       |	            //isPointed = true;
        |              //totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
        |            }
@@ -526,55 +455,24 @@ class CodegenBytesToBytesMapGenerator(
        |    // move on to the next position
        |    // TODO: change the strategies
        |    // now triangle probing
-       |    System.out.println("one miss");
+       |    //System.out.println("one miss");
        |    step++;
        |    //pos = (pos + 1) & mask; // linear probing
        |    pos = (pos + step) & mask; // triangular probing
        |  }
        |  // Didn't find it
-       |  System.err.println("Did not find it with max retries");
-       |  return null;}*/
+       |  //System.err.println("Did not find it with max retries");
+       |  return null;
        |}
      """.stripMargin
   }
 
   private def generateInsert(): String = {
 
-    def genCodeToSetKeys(groupingKeys: Seq[Buffer]): Seq[String] = {
-      groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-        ctx.setValue("batch", "numRows", key.dataType, ordinal, key.name)
-      }
-    }
-
-    def genCodeToSetAggBuffers(bufferValues: Seq[Buffer]): Seq[String] = {
-      bufferValues.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-        ctx.updateColumn("batch", "numRows", key.dataType, groupingKeys.length + ordinal,
-          buffVars(ordinal), nullable = true)
-      }
-    }
-
     s"""
-       |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
        |public UnsafeRow insert(
-       |${groupingKeySignature}) {
+       |${groupingKeySignature}, int pos, int h) {
        |
-       |  //long h = -1640531527L;
-       |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  //int h = (int) agg_key;
-       |
-       |  //System.out.println("" + agg_key + ":" + h);
-       |  int step = 0;
-       |  int pos = (int) h & mask;
-       |  //System.out.println("print rowkey ------");
-       |  //System.out.println(rowKey);
-       |  ${groupingKeys.map("//System.out.println(" + _.name + ");").mkString("\n")}
-       |  //System.out.println("end print ------");
-       |  //Object kbase = rowKey.getBaseObject(); // could be cogen
-       |  //long koff = rowKey.getBaseOffset();  // could be cogen
-       |  //int klen = rowKey.getSizeInBytes(); // could be cogen
-       |  while (step < maxSteps) {
-       |    if (longArray[pos * 2] == 0) { //new entry
-       |    //System.out.println("new entry");
        |      if (numRows < capacity) {
        |
        |
@@ -643,61 +541,6 @@ class CodegenBytesToBytesMapGenerator(
        |        System.err.println("No more space");
        |        return null;
        |      }
-       |    } else {
-       |      // we will check equality here and return buffer if matched
-       |      // 1st level: hash code match
-       |      //System.out.println("cache hit");
-       |      //if ((int)stored == h) {
-       |          // 2nd level: keys match
-       |          // TODO: codegen based with key types, so we don't need byte by byte compare
-       |          foundFullKeyAddress = longArray[pos * 2];
-       |          //System.out.println(foundFullKeyAddress);
-       |          foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
-       |          foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
-       |          //System.out.println(foundOff);
-       |          foundLen = Platform.getInt(foundBase, foundOff-4);
-       |          //System.out.println(foundLen);
-       |          foundTotalLen = Platform.getInt(foundBase, foundOff-8);
-       |          //System.out.println(foundTotalLen);
-       |
-       |          //Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
-       |          //long foundOff = 28;
-       |          //foundLen = 16;
-       |          //foundTotalLen = 36;
-       |
-       |          //System.out.println("here");
-       |          //if (foundLen == klen) {
-       |              //if (arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
-       |
-       |
-       |              currentKeyBuffer.pointTo(foundBase, foundOff, foundLen);
-       |              ${foundKeyAssignment};
-       |
-       |              //long agg_foundkey = Platform.getLong(foundBase, foundOff + 8); //HACK
-       |              if(keyEquals(${groupingKeys.map(_.name).mkString(", ")},
-       |                ${foundKeys.map(_.name).mkString(", ")})) {
-       |              //System.out.println("complete match");
-       |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
-       |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
-       |	      isPointed = true;
-       |              //totalAdditionalProbs += step;
-       |              return currentAggregationBuffer;
-       |            }
-       |         // }
-       |      }
-       |
-       |    //}
-       |    // move on to the next position
-       |    // TODO: change the strategies
-       |    // now triangle probing
-       |    System.out.println("one miss");
-       |    step++;
-       |    //pos = (pos + 1) & mask; // linear probing
-       |    pos = (pos + step) & mask; // triangular probing
-       |  }
-       |  // Didn't find it
-       |  System.err.println("Did not find it with max retries");
-       |  return null;
        |}
      """.stripMargin
   }
