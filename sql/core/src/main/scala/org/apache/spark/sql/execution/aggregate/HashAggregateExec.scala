@@ -763,11 +763,14 @@ case class HashAggregateExec(
              |// generate the unsaferow
              |
              |if ($checkFallbackForGeneratedHashMap) {
+             |  //agg_vectorizedAggBuffer = new
+             |/*
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
+             |  */
              |}
          """.stripMargin)
       } else {
@@ -781,12 +784,14 @@ case class HashAggregateExec(
              |
              |if ($checkFallbackForGeneratedHashMap) {
              |  // generate unsaferow for b2bmap
-             |
+             |  agg_vectorizedAggBuffer = new UnsafeRow(1);
+             |  /*
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
+             |  */
              |}
          """.stripMargin)
     }
@@ -867,9 +872,9 @@ case class HashAggregateExec(
       var s = ""
       if (isVectorizedHashMapEnabled) {
         if (isCodegenedB2BMapEnabled) {
-          s = updateRowInCodegenB2BMap.getOrElse("")
+          // s = updateRowInCodegenB2BMap.getOrElse("")
         } else {
-          s = updateRowInVectorizedHashMap.getOrElse("")
+          //s = updateRowInVectorizedHashMap.getOrElse("")
         }
       }
       s
