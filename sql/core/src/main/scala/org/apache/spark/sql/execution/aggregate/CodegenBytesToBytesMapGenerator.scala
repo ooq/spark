@@ -153,7 +153,7 @@ class CodegenBytesToBytesMapGenerator(
        |    $generatedAggBufferSchema
        |  private org.apache.spark.sql.types.StructType groupingKeySchema =
        |    $generatedGroupingKeySchema
-       |  private long[] longArray;
+       |  private int[] buckets;
        |  private int mask;
        |  private TaskMemoryManager taskMemoryManager;
        |  private final java.util.LinkedList<MemoryBlock> dataPages = new java.util.LinkedList<MemoryBlock>();
@@ -188,9 +188,9 @@ class CodegenBytesToBytesMapGenerator(
        |      taskMemoryManager.pageSizeBytes(),
        |      taskMemoryManager.getTungstenMemoryMode());
        |    this.taskMemoryManager = taskMemoryManager;
-       |    longArray = new long[capacity *2 * 2];
-       |    java.util.Arrays.fill(longArray, 0);
-       |    mask = capacity*2 - 1;
+       |    buckets = new int[(int)(capacity / loadFactor)];
+       |    java.util.Arrays.fill(buckets, -1);
+       |    mask = (int) (capacity/loadFactor) - 1;
        |
        |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
        |    this.emptyAggregationBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
@@ -340,39 +340,7 @@ class CodegenBytesToBytesMapGenerator(
      """.stripMargin
   }
 
-  /**
-    * Generates a method that returns a mutable
-    * [[org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row]] which keeps track of the
-    * aggregate value(s) for a given set of keys. If the corresponding row doesn't exist, the
-    * generated method adds the corresponding row in the associated
-    * [[org.apache.spark.sql.execution.vectorized.ColumnarBatch]]. For instance, if we
-    * have 2 long group-by keys, the generated function would be of the form:
-    *
-    * {{{
-    * public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(
-    *     long agg_key, long agg_key1) {
-    *   long h = hash(agg_key, agg_key1);
-    *   int step = 0;
-    *   int idx = (int) h & (numBuckets - 1);
-    *   while (step < maxSteps) {
-    *     // Return bucket index if it's either an empty slot or already contains the key
-    *     if (buckets[idx] == -1) {
-    *       batch.column(0).putLong(numRows, agg_key);
-    *       batch.column(1).putLong(numRows, agg_key1);
-    *       batch.column(2).putLong(numRows, 0);
-    *       buckets[idx] = numRows++;
-    *       return batch.getRow(buckets[idx]);
-    *     } else if (equals(idx, agg_key, agg_key1)) {
-    *       return batch.getRow(buckets[idx]);
-    *     }
-    *     idx = (idx + 1) & (numBuckets - 1);
-    *     step++;
-    *   }
-    *   // Didn't find it
-    *   return null;
-    * }
-    * }}}
-    */
+
   private def generateFindOrInsert(): String = {
 
     def genCodeToSetKeys(groupingKeys: Seq[Buffer]): Seq[String] = {
@@ -397,47 +365,32 @@ class CodegenBytesToBytesMapGenerator(
        |  int step = 0;
        |  int pos = (int) h & mask;
        |  while (step < maxSteps) {
-       |    if (bucket[idx]=-1) { //new entry
-       |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos, (int) h);
+       |    if (buckets[pos] == -1) { //new entry
+       |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos);
        |    } else {
        |    if(numRows > 0) return currentAggregationBuffer; /*
        |      //if ((int)stored == h) {
-       |          // 2nd level: keys match
-       |          // TODO: codegen based with key types, so we don't need byte by byte compare
        |          agg_foundkey = Platform.getLong(currentPageObject, 36);
        |          if(keyEquals(agg_key,agg_foundkey)) {
        |              currentAggregationBuffer.pointTo(currentPageObject, 44, 20);
        |              return currentAggregationBuffer;
        |          }
-       |          
-       |          foundFullKeyAddress = longArray[pos * 2];
-       |          //System.out.println(foundFullKeyAddress);
-       |          foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
-       |          foundOff = taskMemoryManager.getOffsetInPage(foundFullKeyAddress) + 8;
-       |          //System.out.println(foundOff);
+       |
+       |          foundOff = buckets[pos] + 8;
+       |
        |          foundLen = Platform.getInt(foundBase, foundOff-4);
-       |          //System.out.println(foundLen);
        |          foundTotalLen = Platform.getInt(foundBase, foundOff-8);
-       |          //System.out.println(foundTotalLen);
-       |          
-       |          //Object foundBase = ((MemoryBlock)dataPages.peek()).getBaseObject();
+       |
        |          //long foundOff = 28;
        |          //foundLen = 16;
        |          //foundTotalLen = 36;
-       |          
-       |          //System.out.println("here");
-       |          //if (foundLen == klen) {
-       |              //if (arrayEquals(kbase, koff, foundBase, foundOff, klen)) {
        |
        |
        |              currentKeyBuffer.pointTo(foundBase, foundOff, foundLen);
        |              ${foundKeyAssignment};
        |
-       |              //long agg_foundkey = Platform.getLong(foundBase, foundOff + 8); //HACK
        |              if(keyEquals(${groupingKeys.map(_.name).mkString(", ")},
        |                ${foundKeys.map(_.name).mkString(", ")})) {
-       |              //System.out.println("complete match");
-       |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
        |	            //isPointed = true;
        |              //totalAdditionalProbs += step;
@@ -466,7 +419,7 @@ class CodegenBytesToBytesMapGenerator(
 
     s"""
        |private UnsafeRow insert(
-       |${groupingKeySignature}, int pos, int h) {
+       |${groupingKeySignature}, int pos) {
        |
        |      if (numRows < capacity) {
        |
@@ -519,10 +472,7 @@ class CodegenBytesToBytesMapGenerator(
        |        offset = currentPage.getBaseOffset();
        |        Platform.putInt(base, offset, Platform.getInt(base, offset) + 1);
        |        pageCursor += recordLength;
-       |        final long storedKeyAddress = taskMemoryManager.encodePageNumberAndOffset(
-       |        currentPage, recordOffset);
-       |        longArray[pos * 2] =  storedKeyAddress;
-       |        longArray[pos * 2 + 1] = h;
+       |        buckets[pos] = (int) recordOffset;
        |        numRows++;
        |
        |        // now we want point the value UnsafeRow to the correct location
