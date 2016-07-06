@@ -207,15 +207,15 @@ public final class UnsafeRow extends MutableRow implements Externalizable, KryoS
 
   @Override
   public void setInt(int ordinal, int value) {
-    assertIndexIsValid(ordinal);
-    setNotNullAt(ordinal);
+    //assertIndexIsValid(ordinal);
+    //setNotNullAt(ordinal);
     Platform.putInt(baseObject, getFieldOffset(ordinal), value);
   }
 
   @Override
   public void setLong(int ordinal, long value) {
-    assertIndexIsValid(ordinal);
-    setNotNullAt(ordinal);
+    //assertIndexIsValid(ordinal);
+    //setNotNullAt(ordinal);
     Platform.putLong(baseObject, getFieldOffset(ordinal), value);
   }
 
@@ -372,13 +372,13 @@ public final class UnsafeRow extends MutableRow implements Externalizable, KryoS
 
   @Override
   public int getInt(int ordinal) {
-    assertIndexIsValid(ordinal);
+    //assertIndexIsValid(ordinal);
     return Platform.getInt(baseObject, getFieldOffset(ordinal));
   }
 
   @Override
   public long getLong(int ordinal) {
-    assertIndexIsValid(ordinal);
+    //assertIndexIsValid(ordinal);
     return Platform.getLong(baseObject, getFieldOffset(ordinal));
   }
 

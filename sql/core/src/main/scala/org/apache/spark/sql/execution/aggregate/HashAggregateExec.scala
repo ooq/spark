@@ -687,7 +687,7 @@ case class HashAggregateExec(
        long $beforeAgg = System.nanoTime();
        //System.out.println("doAgg start");
        $doAgg();
-       //System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
+       System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
        $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
      }
 
@@ -764,13 +764,13 @@ case class HashAggregateExec(
              |
              |if ($checkFallbackForGeneratedHashMap) {
              |  //agg_vectorizedAggBuffer = new
-             |/*
+             |
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
-             |  */
+             |  
              |}
          """.stripMargin)
       } else {
@@ -784,14 +784,14 @@ case class HashAggregateExec(
              |
              |if ($checkFallbackForGeneratedHashMap) {
              |  // generate unsaferow for b2bmap
-             |  agg_vectorizedAggBuffer = new UnsafeRow(1);
-             |  /*
+             |  // agg_vectorizedAggBuffer = new UnsafeRow(1);
+             |  
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
              |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
-             |  */
+             |  
              |}
          """.stripMargin)
     }
@@ -872,9 +872,9 @@ case class HashAggregateExec(
       var s = ""
       if (isVectorizedHashMapEnabled) {
         if (isCodegenedB2BMapEnabled) {
-          // s = updateRowInCodegenB2BMap.getOrElse("")
+          //s = updateRowInCodegenB2BMap.getOrElse("")
         } else {
-          //s = updateRowInVectorizedHashMap.getOrElse("")
+          s = updateRowInVectorizedHashMap.getOrElse("")
         }
       }
       s

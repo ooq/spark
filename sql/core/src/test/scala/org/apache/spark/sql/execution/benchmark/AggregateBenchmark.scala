@@ -1166,6 +1166,8 @@ class AggregateBenchmark extends BenchmarkBase {
   }
 
   test("cacahe perf") {
+     //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     //
     val N = 20 << 24;
     //val N = 10;
@@ -1176,7 +1178,6 @@ class AggregateBenchmark extends BenchmarkBase {
     var i = 0
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     sparkSession.range(N)
       .selectExpr(
         "floor(rand() * " + "1" + ") as k1").createOrReplaceTempView("test")
@@ -1193,9 +1194,9 @@ class AggregateBenchmark extends BenchmarkBase {
 	      timeStart = System.nanoTime
         sparkSession.range(N)
           .selectExpr(
-            "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test")
+            "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test"+j)
         sparkSession.sql("select count(*)" +
-		" from test group by k1").collect()
+		" from test"+j+" group by k1").collect()
 	      timeEnd = System.nanoTime
 	      nsPerRow = (timeEnd - timeStart)  / N
         println("[iteration] Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")

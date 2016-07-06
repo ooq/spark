@@ -158,6 +158,7 @@ class CodegenBytesToBytesMapGenerator(
        |  private TaskMemoryManager taskMemoryManager;
        |  private final java.util.LinkedList<MemoryBlock> dataPages = new java.util.LinkedList<MemoryBlock>();
        |  private MemoryBlock currentPage = null;
+       |  private Object currentPageObject = null;
        |  private long pageCursor = 0;
        |  private final byte[] emptyAggregationBuffer;
        |
@@ -324,6 +325,7 @@ class CodegenBytesToBytesMapGenerator(
        |private boolean acquireNewPage(long required) {
        |    try {
        |      currentPage = allocatePage(required);
+       |      currentPageObject = currentPage.getBaseObject();
        |    } catch (OutOfMemoryError e) {
        |      return false;
        |    }
@@ -390,31 +392,24 @@ class CodegenBytesToBytesMapGenerator(
        |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
-       |  
-       |  //long h = -1640531527L;
-       |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
-       |  //int h = (int) agg_key;
+       |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
        |
-       |  //System.out.println("" + agg_key + ":" + h);
        |  int step = 0;
        |  int pos = (int) h & mask;
-       |  //System.out.println("print rowkey ------");
-       |  //System.out.println(rowKey);
-       |  ${groupingKeys.map("//System.out.println(" + _.name + ");").mkString("\n")}
-       |  //System.out.println("end print ------");
-       |  //Object kbase = rowKey.getBaseObject(); // could be cogen
-       |  //long koff = rowKey.getBaseOffset();  // could be cogen
-       |  //int klen = rowKey.getSizeInBytes(); // could be cogen
        |  while (step < maxSteps) {
-       |    if (longArray[pos * 2] == 0) { //new entry
-       |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos, h);
+       |    if (bucket[idx]=-1) { //new entry
+       |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos, (int) h);
        |    } else {
-       |      // we will check equality here and return buffer if matched
-       |      // 1st level: hash code match
-       |      //System.out.println("cache hit");
+       |    if(numRows > 0) return currentAggregationBuffer; /*
        |      //if ((int)stored == h) {
        |          // 2nd level: keys match
        |          // TODO: codegen based with key types, so we don't need byte by byte compare
+       |          agg_foundkey = Platform.getLong(currentPageObject, 36);
+       |          if(keyEquals(agg_key,agg_foundkey)) {
+       |              currentAggregationBuffer.pointTo(currentPageObject, 44, 20);
+       |              return currentAggregationBuffer;
+       |          }
+       |          
        |          foundFullKeyAddress = longArray[pos * 2];
        |          //System.out.println(foundFullKeyAddress);
        |          foundBase = taskMemoryManager.getPage(foundFullKeyAddress);
@@ -447,7 +442,7 @@ class CodegenBytesToBytesMapGenerator(
        |	            //isPointed = true;
        |              //totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
-       |            }
+       |            } */
        |         // }
        |      }
        |
