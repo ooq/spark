@@ -470,7 +470,7 @@ class CodegenBytesToBytesMapGenerator(
   private def generateInsert(): String = {
 
     s"""
-       |public UnsafeRow insert(
+       |private UnsafeRow insert(
        |${groupingKeySignature}, int pos, int h) {
        |
        |      if (numRows < capacity) {

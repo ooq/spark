@@ -314,6 +314,7 @@ case class HashAggregateExec(
   }
 
   def getTaskMemoryManager(): TaskMemoryManager = {
+
     TaskContext.get().taskMemoryManager()
   }
 
