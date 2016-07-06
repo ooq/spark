@@ -683,10 +683,10 @@ case class HashAggregateExec(
     s"""
      if (!$initAgg) {
        $initAgg = true;
-       long $beforeAgg = System.nanoTime();
-       System.out.println("doAgg start");
+       //long $beforeAgg = System.nanoTime();
+       //System.out.println("doAgg start");
        $doAgg();
-       System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
+       //System.out.println("aggregate time is " + (System.nanoTime() - $beforeAgg)/1000000 + "ms");
        $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
      }
 
@@ -821,12 +821,12 @@ case class HashAggregateExec(
         Option(
           s"""
              |// common sub-expressions
-             |/*$effectiveCodes
+             |$effectiveCodes
              |
              |// evaluate aggregate function
              |${evaluateVariables(vectorizedRowEvals)}
              |// update b2b map row
-             |${updateVectorizedRow.mkString("\n").trim}*/
+             |${updateVectorizedRow.mkString("\n").trim}
              |
            """.stripMargin)
       } else None
@@ -850,13 +850,13 @@ case class HashAggregateExec(
         Option(
           s"""
              |// common sub-expressions
-             |/*$effectiveCodes
+             |$effectiveCodes
              |
              |
              |// evaluate aggregate function
              |${evaluateVariables(vectorizedRowEvals)}
              |// update vectorized row
-             |${updateVectorizedRow.mkString("\n").trim}*/
+             |${updateVectorizedRow.mkString("\n").trim}
              |
            """.stripMargin)
       } else None
