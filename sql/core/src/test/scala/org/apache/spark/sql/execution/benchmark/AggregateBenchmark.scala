@@ -1176,7 +1176,7 @@ class AggregateBenchmark extends BenchmarkBase {
     var i = 0
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     sparkSession.range(N)
       .selectExpr(
         "floor(rand() * " + "1" + ") as k1").createOrReplaceTempView("test")
