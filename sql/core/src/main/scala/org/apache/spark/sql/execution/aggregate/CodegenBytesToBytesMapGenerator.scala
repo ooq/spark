@@ -388,7 +388,10 @@ class CodegenBytesToBytesMapGenerator(
        |//public UnsafeRow findOrInsert(UnsafeRow rowKey,
        |public UnsafeRow findOrInsert(
        |${groupingKeySignature}) {
-       |      //if(isPointed) {return currentAggregationBuffer;}
+       |  
+       |  //return currentAggregationBuffer;
+       |  if(numRows != 0) {return currentAggregationBuffer;} else {
+       |     //numRows++; return currentAggregationBuffer; } 
        |  //long h = -1640531527L;
        |  int h = (int)hash(${groupingKeys.map(_.name).mkString(", ")});
        |  //int h = (int) agg_key;
@@ -510,7 +513,7 @@ class CodegenBytesToBytesMapGenerator(
        |              //System.out.println("complete match");
        |              //UnsafeRow currentAggregationBuffer = new UnsafeRow(1);
        |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
-       |	      //isPointed = true;
+       |	      isPointed = true;
        |              //totalAdditionalProbs += step;
        |              return currentAggregationBuffer;
        |            }
@@ -528,7 +531,7 @@ class CodegenBytesToBytesMapGenerator(
        |  }
        |  // Didn't find it
        |  System.err.println("Did not find it with max retries");
-       |  return null;
+       |  return null;}
        |}
      """.stripMargin
   }

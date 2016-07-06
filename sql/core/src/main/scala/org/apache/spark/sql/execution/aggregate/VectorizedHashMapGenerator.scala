@@ -252,6 +252,7 @@ class VectorizedHashMapGenerator(
     s"""
        |public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(${
             groupingKeySignature}) {
+       |  if(numRows != 0) return batch.getRow(0);
        |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
        |  //long h = agg_key;
        |  int step = 0;

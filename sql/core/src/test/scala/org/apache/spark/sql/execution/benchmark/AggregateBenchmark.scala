@@ -1167,7 +1167,7 @@ class AggregateBenchmark extends BenchmarkBase {
 
   test("cacahe perf") {
     //
-    val N = 20 << 22;
+    val N = 20 << 24;
     //val N = 10;
 
     var timeStart: Long = 0L

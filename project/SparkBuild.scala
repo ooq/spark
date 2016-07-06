@@ -809,6 +809,8 @@ object TestSettings {
       "JAVA_HOME" -> sys.env.get("JAVA_HOME").getOrElse(sys.props("java.home"))),
     //javaOptions in Test += s"-XX:+PrintCompilation",
     //javaOptions in Test += s"-XX:+PrintGCDetails",
+    //javaOptions in Test += s"-XX:InlineSmallCode=2000",
+    javaOptions in Test ++= "-XX:+PrintCompilation -XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining".split(" ").toSeq,
     javaOptions in Test += s"-Djava.io.tmpdir=$testTempDir",
     javaOptions in Test += "-Dspark.test.home=" + sparkHome,
     javaOptions in Test += "-Dspark.testing=1",

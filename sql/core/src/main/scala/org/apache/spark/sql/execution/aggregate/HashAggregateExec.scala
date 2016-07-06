@@ -576,7 +576,7 @@ case class HashAggregateExec(
 
     def generateLoopPrintTime(): String = {
       s"""
-         |//System.out.println("loop time " + (System.nanoTime() - startTime)/1000000 + "ms");
+         |//System.out.println("loop time " + (System.nanoTime() - startTime1)/1000000 + "ms");
          """.stripMargin
     }
 
@@ -584,15 +584,15 @@ case class HashAggregateExec(
       s"""
         ${generateGenerateCode}
         private void $doAgg() throws java.io.IOException {
-          //long startTime = System.nanoTime();
           $hashMapTerm = $thisPlan.createHashMap();
+          //long startTime1 = System.nanoTime();
           ${child.asInstanceOf[CodegenSupport].produce(ctx, this)}
 
           ${
             if (isVectorizedHashMapEnabled) {
               generateLoopPrintTime
             } else {
-              s""
+              generateLoopPrintTime
             }
           }
 
@@ -821,12 +821,12 @@ case class HashAggregateExec(
         Option(
           s"""
              |// common sub-expressions
-             |$effectiveCodes
+             |/*$effectiveCodes
              |
              |// evaluate aggregate function
              |${evaluateVariables(vectorizedRowEvals)}
              |// update b2b map row
-             |${updateVectorizedRow.mkString("\n").trim}
+             |${updateVectorizedRow.mkString("\n").trim}*/
              |
            """.stripMargin)
       } else None
@@ -850,13 +850,13 @@ case class HashAggregateExec(
         Option(
           s"""
              |// common sub-expressions
-             |$effectiveCodes
+             |/*$effectiveCodes
              |
              |
              |// evaluate aggregate function
              |${evaluateVariables(vectorizedRowEvals)}
              |// update vectorized row
-             |${updateVectorizedRow.mkString("\n").trim}
+             |${updateVectorizedRow.mkString("\n").trim}*/
              |
            """.stripMargin)
       } else None
