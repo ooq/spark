@@ -872,7 +872,7 @@ case class HashAggregateExec(
       var s = ""
       if (isVectorizedHashMapEnabled) {
         if (isCodegenedB2BMapEnabled) {
-          //s = updateRowInCodegenB2BMap.getOrElse("")
+          s = updateRowInCodegenB2BMap.getOrElse("")
         } else {
           s = updateRowInVectorizedHashMap.getOrElse("")
         }

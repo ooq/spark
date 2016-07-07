@@ -1166,16 +1166,16 @@ class AggregateBenchmark extends BenchmarkBase {
   }
 
   test("cacahe perf") {
-     //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     //
-    val N = 20 << 24;
+    val N = 20 << 23;
     //val N = 10;
 
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
     var nsPerRow: Long = 0L
-    var i = 0
+    var i = 6
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
     sparkSession.range(N)
@@ -1186,10 +1186,10 @@ class AggregateBenchmark extends BenchmarkBase {
     sparkSession.sql("select count(*)" +
       " from test group by k1").collect()
 
-    while (i < 6) {
+    while (i < 21) {
       var j = 0
       var minTime: Long = 1000
-      while (j < 10) {
+      while (j < 5) {
               System.gc()
 	      timeStart = System.nanoTime
         sparkSession.range(N)
@@ -1200,7 +1200,7 @@ class AggregateBenchmark extends BenchmarkBase {
 	      timeEnd = System.nanoTime
 	      nsPerRow = (timeEnd - timeStart)  / N
         println("[iteration] Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
-	      if (j > 4 && minTime > nsPerRow) minTime = nsPerRow
+	      if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
               j += 1
       }
       // scalastyle:off  

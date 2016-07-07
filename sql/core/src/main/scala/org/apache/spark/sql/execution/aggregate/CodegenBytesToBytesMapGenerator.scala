@@ -289,25 +289,8 @@ class CodegenBytesToBytesMapGenerator(
 
   private def generateArrayEquals(): String = {
     s"""
-       |private boolean arrayEquals(
-       |  Object leftBase, long leftOffset, Object rightBase, long rightOffset, final long length) {
-       |      int i = 0;
-       |    while (i <= length - 8) {
-       |      if (Platform.getLong(leftBase, leftOffset + i) !=
-       |        Platform.getLong(rightBase, rightOffset + i)) {
-       |        return false;
-       |      }
-       |      i += 8;
-       |    }
-       |    while (i < length) {
-       |      if (Platform.getByte(leftBase, leftOffset + i) !=
-       |        Platform.getByte(rightBase, rightOffset + i)) {
-       |        return false;
-       |      }
-       |      i += 1;
-       |    }
-       |    return true;
-       |
+       |private boolean arrayEquals(long offset, long agg_key) {
+       | return (Platform.getLong(currentPageObject, offset) == agg_key);
        |
        |}
      """.stripMargin
@@ -368,35 +351,12 @@ class CodegenBytesToBytesMapGenerator(
        |    if (buckets[pos] == -1) { //new entry
        |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos);
        |    } else {
-       |    if(numRows > 0) return currentAggregationBuffer; /*
-       |      //if ((int)stored == h) {
-       |          agg_foundkey = Platform.getLong(currentPageObject, 36);
-       |          if(keyEquals(agg_key,agg_foundkey)) {
-       |              currentAggregationBuffer.pointTo(currentPageObject, 44, 20);
+       |          long offset = (long)buckets[pos];
+       |          if(arrayEquals(offset+16,agg_key)) {
+       |              currentAggregationBuffer.pointTo(currentPageObject, offset+24, 20);
        |              return currentAggregationBuffer;
        |          }
-       |
-       |          foundOff = buckets[pos] + 8;
-       |
-       |          foundLen = Platform.getInt(foundBase, foundOff-4);
-       |          foundTotalLen = Platform.getInt(foundBase, foundOff-8);
-       |
-       |          //long foundOff = 28;
-       |          //foundLen = 16;
-       |          //foundTotalLen = 36;
-       |
-       |
-       |              currentKeyBuffer.pointTo(foundBase, foundOff, foundLen);
-       |              ${foundKeyAssignment};
-       |
-       |              if(keyEquals(${groupingKeys.map(_.name).mkString(", ")},
-       |                ${foundKeys.map(_.name).mkString(", ")})) {
-       |              currentAggregationBuffer.pointTo(foundBase, foundOff + foundLen, foundTotalLen - foundLen);
-       |	            //isPointed = true;
-       |              //totalAdditionalProbs += step;
-       |              return currentAggregationBuffer;
-       |            } */
-       |         // }
+       |          
        |      }
        |
        |    //}
