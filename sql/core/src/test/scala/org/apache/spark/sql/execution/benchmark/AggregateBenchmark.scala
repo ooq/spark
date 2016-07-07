@@ -1175,14 +1175,14 @@ class AggregateBenchmark extends BenchmarkBase {
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
     var nsPerRow: Long = 0L
-    var i = 6
+    var i = 0
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
 
-    while (i < 7) {
+    while (i < 1) {
       var j = 0
       var minTime: Long = 1000
-      while (j < 5) {
+      while (j < 1) {
         System.gc()
 	      timeStart = System.nanoTime
         sparkSession.range(N)
