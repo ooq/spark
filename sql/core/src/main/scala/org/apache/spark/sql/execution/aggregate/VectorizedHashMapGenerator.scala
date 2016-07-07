@@ -132,7 +132,7 @@ class VectorizedHashMapGenerator(
        |    aggregateBufferBatch = org.apache.spark.sql.execution.vectorized.ColumnarBatch.allocate(
        |      aggregateBufferSchema, org.apache.spark.memory.MemoryMode.ON_HEAP, capacity);
        |    for (int i = 0 ; i < aggregateBufferBatch.numCols(); i++) {
-       |       //aggregateBufferBatch.setColumn(i, batch.column(i+${groupingKeys.length}));
+       |       aggregateBufferBatch.setColumn(i, batch.column(i+${groupingKeys.length}));
        |    }
        |
        |    buckets = new int[numBuckets];

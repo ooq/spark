@@ -1166,8 +1166,8 @@ class AggregateBenchmark extends BenchmarkBase {
   }
 
   test("cacahe perf") {
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
-    //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+    //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     //
     val N = 20 << 23;
     //val N = 10;
@@ -1178,25 +1178,20 @@ class AggregateBenchmark extends BenchmarkBase {
     var i = 6
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "10")
-    sparkSession.range(N)
-      .selectExpr(
-        "floor(rand() * " + "1" + ") as k1").createOrReplaceTempView("test")
-    sparkSession.sql("select count(*)" +
-      " from test group by k1").collect()
-    sparkSession.sql("select count(*)" +
-      " from test group by k1").collect()
 
-    while (i < 21) {
+    while (i < 7) {
       var j = 0
       var minTime: Long = 1000
       while (j < 5) {
-              System.gc()
+        System.gc()
 	      timeStart = System.nanoTime
         sparkSession.range(N)
           .selectExpr(
             "floor(rand() * " + (1<<i) + ") as k1").createOrReplaceTempView("test"+j)
-        sparkSession.sql("select count(*)" +
-		" from test"+j+" group by k1").collect()
+        sparkSession.sql("select k1, sum(k1)" +
+          " from test"+j+" group by k1").queryExecution.debug.codegen()
+        sparkSession.sql("select k1, sum(k1)" +
+          " from test"+j+" group by k1").show()
 	      timeEnd = System.nanoTime
 	      nsPerRow = (timeEnd - timeStart)  / N
         println("[iteration] Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
@@ -1212,6 +1207,76 @@ class AggregateBenchmark extends BenchmarkBase {
       i += 1
     }
   }
+
+  test("new stress test") {
+    //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+    //
+    val N = 20 << 23;
+    //val N = 10;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 6
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    sparkSession.range(N)
+      .selectExpr(
+        "id & " + ((1<<i)-1)  + " as k1",
+        "id & " + ((1<<i)-1)  + " as k2",
+        "id & " + ((1<<i)-1)  + " as k3",
+        "id & " + ((1<<i)-1)  + " as k4",
+        "id & " + ((1<<i)-1)  + " as k5",
+        "id & " + ((1<<i)-1)  + " as k6",
+        "id & " + ((1<<i)-1)  + " as k7",
+        "id & " + ((1<<i)-1)  + " as k8")
+      .createOrReplaceTempView("test")
+
+    sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+      " from test group by k1, k2, k3, k4, k5, k6, k7, k8").queryExecution.debug.codegen()
+
+
+    sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+      " from test group by k1, k2, k3, k4, k5, k6, k7, k8").show()
+
+
+    while (i < 0) {
+      var j = 0
+      var minTime: Long = 1000
+      while (j < 5) {
+        System.gc()
+        sparkSession.range(N)
+          .selectExpr(
+            "id & " + ((1<<i)-1)  + " as k1",
+            "id & " + ((1<<i)-1)  + " as k2",
+            "id & " + ((1<<i)-1)  + " as k3",
+            "id & " + ((1<<i)-1)  + " as k4",
+            "id & " + ((1<<i)-1)  + " as k5",
+            "id & " + ((1<<i)-1)  + " as k6",
+            "id & " + ((1<<i)-1)  + " as k7",
+            "id & " + ((1<<i)-1)  + " as k8")
+          .createOrReplaceTempView("test")
+        timeStart = System.nanoTime
+        sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+          " from test group by k1, k2, k3, k4, k5, k6, k7, k8").collect()
+        timeEnd = System.nanoTime
+        nsPerRow = (timeEnd - timeStart)  / N
+        println("[iteration] Distinct key = " + (1<<i)  + ", time per row = " + nsPerRow + "ns.")
+        if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+        j += 1
+      }
+      // scalastyle:off
+      println("")
+      println("[Min] Distinct key = " + (1<<i)  + ", time per row = " + minTime + "ns.")
+      println("")
+      // scalastyle:on
+
+      i += 1
+    }
+  }
+
 
 
   ignore("minimal perf") {

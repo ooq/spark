@@ -288,9 +288,15 @@ class CodegenBytesToBytesMapGenerator(
   }
 
   private def generateArrayEquals(): String = {
+    def genEqualsForKeys(groupingKeys: Seq[Buffer]): String = {
+      groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+        s"""(Platform.getLong(currentPageObject, offset + ${ordinal*8}) == ${key.name})"""
+      }.mkString(" && ")
+    }
+
     s"""
-       |private boolean arrayEquals(long offset, long agg_key) {
-       | return (Platform.getLong(currentPageObject, offset) == agg_key);
+       |private boolean arrayEquals(long offset, $groupingKeySignature) {
+       | return (${genEqualsForKeys(groupingKeys)});
        |
        |}
      """.stripMargin
@@ -352,8 +358,8 @@ class CodegenBytesToBytesMapGenerator(
        |      return insert(${groupingKeys.map(_.name).mkString(", ")}, pos);
        |    } else {
        |          long offset = (long)buckets[pos];
-       |          if(arrayEquals(offset+16,agg_key)) {
-       |              currentAggregationBuffer.pointTo(currentPageObject, offset+24, 20);
+       |          if(arrayEquals(offset+16,${groupingKeys.map(_.name).mkString(", ")})) {
+       |              currentAggregationBuffer.pointTo(currentPageObject, offset+${16 + 8 * groupingKeys.size}, ${12 + 8 * bufferValues.size});
        |              return currentAggregationBuffer;
        |          }
        |          
