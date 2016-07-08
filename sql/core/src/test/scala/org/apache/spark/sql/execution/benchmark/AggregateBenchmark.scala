@@ -1165,7 +1165,7 @@ class AggregateBenchmark extends BenchmarkBase {
     }
   }
 
-  test("cacahe perf") {
+  ignore("cacahe perf") {
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
     //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     //
@@ -1209,8 +1209,8 @@ class AggregateBenchmark extends BenchmarkBase {
   }
 
   test("new stress test") {
-    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
-    //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
+    //sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "false")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.rowbased", "true")
     //
     val N = 20 << 23;
     //val N = 10;
@@ -1222,6 +1222,7 @@ class AggregateBenchmark extends BenchmarkBase {
     sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
     sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
 
+    /*
     sparkSession.range(N)
       .selectExpr(
         "id & " + ((1<<i)-1)  + " as k1",
@@ -1234,18 +1235,18 @@ class AggregateBenchmark extends BenchmarkBase {
         "id & " + ((1<<i)-1)  + " as k8")
       .createOrReplaceTempView("test")
 
-    sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
-      " from test group by k1, k2, k3, k4, k5, k6, k7, k8").queryExecution.debug.codegen()
+    //sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
+    //  " from test group by k1, k2, k3, k4, k5, k6, k7, k8").queryExecution.debug.codegen()
 
 
     sparkSession.sql("select sum(k1), sum(k2), sum(k3),sum(k4),sum(k5),sum(k6),sum(k7),sum(k8)" +
       " from test group by k1, k2, k3, k4, k5, k6, k7, k8").show()
-
+    */
 
     while (i < 0) {
       var j = 0
       var minTime: Long = 1000
-      while (j < 5) {
+      while (j < 21) {
         System.gc()
         sparkSession.range(N)
           .selectExpr(
