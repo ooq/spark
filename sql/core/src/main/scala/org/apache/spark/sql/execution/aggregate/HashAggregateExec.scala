@@ -863,6 +863,12 @@ case class HashAggregateExec(
              |${evaluateVariables(vectorizedRowEvals)}
              |// update vectorized row
              |${updateVectorizedRow.mkString("\n").trim}
+             |  //System.out.println("agg_value16 == " + agg_value16);
+             |  //System.out.println("agg_value17 == " + agg_value17);
+             |  //System.out.println("project_value == " + project_value);
+             |  //System.out.println("agg_value19 == " + agg_value19);
+             |  //System.out.println("isNull == " + agg_vectorizedAggBuffer.isNullAt(0));
+             | //System.out.println("stored value == " + agg_vectorizedAggBuffer.getLong(0));
              |
            """.stripMargin)
       } else None
