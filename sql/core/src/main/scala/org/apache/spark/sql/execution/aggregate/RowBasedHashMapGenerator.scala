@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.aggregate
 
+import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.catalyst.expressions.aggregate.{AggregateExpression, DeclarativeAggregate}
 import org.apache.spark.sql.catalyst.expressions.codegen.{CodegenContext, ExprCode}
 import org.apache.spark.sql.types._
@@ -106,8 +107,7 @@ class RowBasedHashMapGenerator(
         }.mkString("\n").concat(";")
 
     s"""
-       |  private org.apache.spark.sql.execution.vectorized.ColumnarBatch batch;
-       |  private org.apache.spark.sql.execution.vectorized.ColumnarBatch aggregateBufferBatch;
+       |  private org.apache.spark.sql.catalyst.expressions.RowBatch batch;
        |  private int[] buckets;
        |  private int capacity = 1 << 16;
        |  private double loadFactor = 0.5;
@@ -117,16 +117,27 @@ class RowBasedHashMapGenerator(
        |  private org.apache.spark.sql.types.StructType schema = $generatedSchema
        |  private org.apache.spark.sql.types.StructType aggregateBufferSchema =
        |    $generatedAggBufferSchema
+       |  private Object emptyVBase;
+       |  private long emptyVOff;
+       |  private int emptyVLen;
        |
-       |  public $generatedClassName() {
+       |
+       |  public $generatedClassName(
+       |    TaskMemoryManager taskMemoryManager,
+       |    InternalRow emptyAggregationBuffer) {
+       |    super(taskMemoryManager,
+       |      taskMemoryManager.pageSizeBytes(),
+       |      taskMemoryManager.getTungstenMemoryMode());
+       |    this.taskMemoryManager = taskMemoryManager;
        |    batch = org.apache.spark.sql.execution.vectorized.ColumnarBatch.allocate(schema,
        |      org.apache.spark.memory.MemoryMode.ON_HEAP, capacity);
-       |    // TODO: Possibly generate this projection in HashAggregate directly
-       |    aggregateBufferBatch = org.apache.spark.sql.execution.vectorized.ColumnarBatch.allocate(
-       |      aggregateBufferSchema, org.apache.spark.memory.MemoryMode.ON_HEAP, capacity);
-       |    for (int i = 0 ; i < aggregateBufferBatch.numCols(); i++) {
-       |       aggregateBufferBatch.setColumn(i, batch.column(i+${groupingKeys.length}));
-       |    }
+       |
+       |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
+       |    final byte[] emptyBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
+       |
+       |    emptyVBase = emptyBuffer;
+       |    emptyVOff = Platform.BYTE_ARRAY_OFFSET;
+       |    emptyVLen = emptyBuffer.length;
        |
        |    buckets = new int[numBuckets];
        |    java.util.Arrays.fill(buckets, -1);
@@ -171,24 +182,19 @@ class RowBasedHashMapGenerator(
    * associated [[org.apache.spark.sql.catalyst.expressions.RowBatch]]. For instance, if we
    * have 2 long group-by keys, the generated function would be of the form:
    *
-   * {{{
-   * private boolean equals(int idx, long agg_key, long agg_key1) {
-   *   return batch.row(buckets[idx]).getLong(0) == agg_key &&
-   *     batch.row(buckets[idx]).getLong(1) == agg_key1;
-   * }
-   * }}}
    */
   private def generateEquals(): String = {
 
     def genEqualsForKeys(groupingKeys: Seq[Buffer]): String = {
       groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-        s"""(${ctx.genEqual(key.dataType, ctx.getValue("batch", "buckets[idx]",
-          key.dataType, ordinal), key.name)})"""
+        s"""(${ctx.genEqual(key.dataType, ctx.getValue("row",
+          key.dataType, ordinal.toString()), key.name)})"""
       }.mkString(" && ")
     }
 
     s"""
        |private boolean equals(int idx, $groupingKeySignature) {
+       |  UnsafeRow row = batch.getKeyRow(buckets[idx]);
        |  return ${genEqualsForKeys(groupingKeys)};
        |}
      """.stripMargin
@@ -205,22 +211,18 @@ class RowBasedHashMapGenerator(
    *
    */
   private def generateFindOrInsert(): String = {
-
-    def genCodeToSetKeys(groupingKeys: Seq[Buffer]): Seq[String] = {
-      groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-        ctx.setValue("batch", "numRows", key.dataType, ordinal, key.name)
-      }
+    val numVarLenFields = groupingKeys.map(_.dataType).count {
+      case dt if UnsafeRow.isFixedLength(dt) => false
+      // TODO: consider large decimal and interval type
+      case _ => true
     }
 
-    def genCodeToSetAggBuffers(bufferValues: Seq[Buffer]): Seq[String] = {
-      bufferValues.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-        ctx.updateColumn("batch", "numRows", key.dataType, groupingKeys.length + ordinal,
-          buffVars(ordinal), nullable = true)
-      }
-    }
+    val createUnsafeRowForKey = groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
+      s"agg_rowWriter.write(${ordinal}, ${key.name})"}
+      .mkString(";\n")
 
     s"""
-       |public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(${
+       |public org.apache.spark.sql.catalyst.expressions.UnsafeRow findOrInsert(${
             groupingKeySignature}) {
        |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
        |  int step = 0;
@@ -229,25 +231,27 @@ class RowBasedHashMapGenerator(
        |    // Return bucket index if it's either an empty slot or already contains the key
        |    if (buckets[idx] == -1) {
        |      if (numRows < capacity) {
-       |
-       |        // Initialize aggregate keys
-       |        ${genCodeToSetKeys(groupingKeys).mkString("\n")}
-       |
-       |        ${buffVars.map(_.code).mkString("\n")}
-       |
-       |        // Initialize aggregate values
-       |        ${genCodeToSetAggBuffers(bufferValues).mkString("\n")}
-       |
+       |        // creating the unsafe for new entry
+       |        UnsafeRow agg_result = new UnsafeRow(${groupingKeySchema.length});
+       |        BufferHolder agg_holder = new BufferHolder(agg_result, ${numVarLenFields * 32});
+       |        UnsafeRowWriter agg_rowWriter = new UnsafeRowWriter(agg_holder,
+       |          ${groupingKeySchema.length});
+       |        agg_holder.reset(); //TODO: investigate if reset or zeroout are actually needed
+       |        agg_rowWriter.zeroOutNullBytes();
+       |        ${createUnsafeRowForKey};
+       |        agg_result.setTotalSize(agg_holder.totalSize());
+       |        Object kbase = agg_result.getBaseObject();
+       |        long koff = agg_result.getBaseOffset();
+       |        int klen = agg_result.getSizeInBytes();
+       |        batch.appendRow(kbase, koff, klen, emptyVBase, emptyVOff, emptyVLen);
        |        buckets[idx] = numRows++;
-       |        batch.setNumRows(numRows);
-       |        aggregateBufferBatch.setNumRows(numRows);
-       |        return aggregateBufferBatch.getRow(buckets[idx]);
+       |        return batch.getValueFromKey(buckets[idx]);
        |      } else {
        |        // No more space
        |        return null;
        |      }
        |    } else if (equals(idx, ${groupingKeys.map(_.name).mkString(", ")})) {
-       |      return aggregateBufferBatch.getRow(buckets[idx]);
+       |      return batch.getValueFromKey(buckets[idx]);
        |    }
        |    idx = (idx + 1) & (numBuckets - 1);
        |    step++;
@@ -260,8 +264,7 @@ class RowBasedHashMapGenerator(
 
   private def generateRowIterator(): String = {
     s"""
-       |public java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>
-       |    rowIterator() {
+       |public org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow> iterator() {
        |  return batch.rowIterator();
        |}
      """.stripMargin

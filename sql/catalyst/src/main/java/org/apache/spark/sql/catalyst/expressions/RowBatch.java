@@ -168,6 +168,7 @@ public final class RowBatch extends MemoryConsumer{
 
     /**
      * Returns the value row in this batch at `rowId`. Returned value row is reused across calls.
+     * Should be avoided if `getValueFromKey()` gives better performance.
      */
     public UnsafeRow getValueRow(int rowId) {
         assert(rowId >= 0);
