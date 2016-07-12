@@ -52,8 +52,8 @@ public final class RowBatch {
     final UnsafeRow keyRow;
     final UnsafeRow valueRow;
 
-    private int keyRowId;
-    private int valueRowId;
+    private int keyRowId = -1;
+    private int valueRowId = -1;
 
     private long[] keyFullAddress;
     private long[] valueFullAddress;
@@ -80,14 +80,24 @@ public final class RowBatch {
     public void close() {
     }
 
+    private void assertAndCreateIfNotExist(int rowId) {
+        assert(rowId >= 0);
+        assert(rowId <= numRows);
+        if (rowId == numRows) {
+            // creating a new row
+
+            numRows++;
+        }
+    }
     /**
      * Returns the key row in this batch at `rowId`. Returned key row is reused across calls.
      */
     public UnsafeRow getKeyRow(int rowId) {
-        assert(rowId >= 0);
-        assert(rowId < numRows);
+        assertAndCreateIfNotExist(rowId);
         if (keyRowId != rowId) {
             long fullAddress = keyFullAddress[rowId];
+            //TODO: if decoding through manager
+            //is not fast enough, we can do a simple version in this class
             Object base = taskMemoryManager.getPage(fullAddress);
             long offset = taskMemoryManager.getOffsetInPage(fullAddress);
             keyRow.pointTo(base, offset, keyLength[rowId]);
@@ -100,10 +110,11 @@ public final class RowBatch {
      * Returns the value row in this batch at `rowId`. Returned value row is reused across calls.
      */
     public UnsafeRow getValueRow(int rowId) {
-        assert(rowId >= 0);
-        assert(rowId < numRows);
+        assertAndCreateIfNotExist(rowId);
         if (valueRowId != rowId) {
             long fullAddress = valueFullAddress[rowId];
+            //TODO: if decoding through manager
+            //is not fast enough, we can do a simple version in this class
             Object base = taskMemoryManager.getPage(fullAddress);
             long offset = taskMemoryManager.getOffsetInPage(fullAddress);
             valueRow.pointTo(base, offset, valueLength[rowId]);
@@ -123,7 +134,6 @@ public final class RowBatch {
      */
     public UnsafeRow getValueFromKey(int rowId) {
         assert(rowId >= 0);
-        assert(rowId < numRows);
         if (keyRowId != rowId) {
             getKeyRow(rowId);
         }
