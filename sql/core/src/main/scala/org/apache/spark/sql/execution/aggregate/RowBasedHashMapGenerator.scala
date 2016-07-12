@@ -65,7 +65,7 @@ class RowBasedHashMapGenerator(
 
   def generate(): String = {
     s"""
-       |public class $generatedClassName {
+       |public class $generatedClassName extends org.apache.spark.memory.MemoryConsumer{
        |${initializeAggregateHashMap()}
        |
        |${generateFindOrInsert()}
@@ -77,6 +77,8 @@ class RowBasedHashMapGenerator(
        |${generateRowIterator()}
        |
        |${generateClose()}
+       |
+       |${generateSpill()}
        |}
      """.stripMargin
   }
@@ -123,12 +125,11 @@ class RowBasedHashMapGenerator(
        |
        |
        |  public $generatedClassName(
-       |    TaskMemoryManager taskMemoryManager,
+       |    org.apache.spark.memory.TaskMemoryManager taskMemoryManager,
        |    InternalRow emptyAggregationBuffer) {
        |    super(taskMemoryManager,
        |      taskMemoryManager.pageSizeBytes(),
        |      taskMemoryManager.getTungstenMemoryMode());
-       |    this.taskMemoryManager = taskMemoryManager;
        |    batch = org.apache.spark.sql.execution.vectorized.ColumnarBatch.allocate(schema,
        |      org.apache.spark.memory.MemoryMode.ON_HEAP, capacity);
        |
@@ -205,7 +206,7 @@ class RowBasedHashMapGenerator(
    * [[org.apache.spark.sql.catalyst.expressions.UnsafeRow]] which keeps track of the
    * aggregate value(s) for a given set of keys. If the corresponding row doesn't exist, the
    * generated method adds the corresponding row in the associated
-   * [[org.apache.spark.unsafe.memory.MemoryBlock]].
+   * [[org.apache.spark.sql.catalyst.expressions.RowBatch]].
    *
    * TODO: add an example instance
    *
@@ -233,8 +234,11 @@ class RowBasedHashMapGenerator(
        |      if (numRows < capacity) {
        |        // creating the unsafe for new entry
        |        UnsafeRow agg_result = new UnsafeRow(${groupingKeySchema.length});
-       |        BufferHolder agg_holder = new BufferHolder(agg_result, ${numVarLenFields * 32});
-       |        UnsafeRowWriter agg_rowWriter = new UnsafeRowWriter(agg_holder,
+       |        org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder agg_holder
+       |          = new org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder(agg_result,
+       |            ${numVarLenFields * 32});
+       |        org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter agg_rowWriter
+       |          = new org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter(agg_holder,
        |          ${groupingKeySchema.length});
        |        agg_holder.reset(); //TODO: investigate if reset or zeroout are actually needed
        |        agg_rowWriter.zeroOutNullBytes();
@@ -274,6 +278,15 @@ class RowBasedHashMapGenerator(
     s"""
        |public void close() {
        |  batch.close();
+       |}
+     """.stripMargin
+  }
+
+  private def generateSpill(): String = {
+    s"""
+       |public long spill(long size, org.apache.spark.memory.MemoryConsumer trigger)
+       |  throws java.io.IOException {
+       |  return batch.spill();
        |}
      """.stripMargin
   }
