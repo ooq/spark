@@ -498,6 +498,17 @@ object SQLConf {
       .intConf
       .createWithDefault(3)
 
+  val ENFORCE_FAST_AGG_MAP_IMPL =
+    SQLConfigBuilder("spark.sql.codegen.aggregate.map.enforce.impl")
+      .internal()
+      .doc("Sets the implementation for fast hash map during aggregation. Could be one of the " +
+        "following: rowbased, vectorized, skip, auto. Defaults to auto, and should only be other " +
+        "values for testing purposes.")
+      .stringConf
+      .transform(_.toLowerCase())
+      .checkValues(Set("rowbased", "vectorized", "skip", "auto"))
+      .createWithDefault("auto")
+
   val FILE_SINK_LOG_DELETION = SQLConfigBuilder("spark.sql.streaming.fileSink.log.deletion")
     .internal()
     .doc("Whether to delete the expired log files in file stream sink.")
@@ -662,6 +673,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf with Logging {
   override def runSQLonFile: Boolean = getConf(RUN_SQL_ON_FILES)
 
   def vectorizedAggregateMapMaxColumns: Int = getConf(VECTORIZED_AGG_MAP_MAX_COLUMNS)
+
+  def enforceFastAggHashMapImpl: String = getConf(ENFORCE_FAST_AGG_MAP_IMPL)
 
   def variableSubstituteEnabled: Boolean = getConf(VARIABLE_SUBSTITUTE_ENABLED)
 

@@ -280,8 +280,14 @@ case class HashAggregateExec(
   private val bufferSchema = StructType.fromAttributes(aggregateBufferAttributes)
 
   // The name for Vectorized HashMap
-  private var vectorizedHashMapTerm: String = _
-  private var isVectorizedHashMapEnabled: Boolean = _
+  private var fastHashMapTerm: String = _
+  // whether vectorized hashmap or row based hashmap is enabled
+  // we make sure that at most one of the two flags is true
+  // i.e., assertFalse(isVectorizedHashMapEnabled && isRowBasedHashMapEnabled)
+  private var isVectorizedHashMapEnabled: Boolean = false
+  private var isRowBasedHashMapEnabled: Boolean = false
+  // auxiliary flag, true if any of two above is true
+  private var isFastHashMapEnabled: Boolean = false
 
   // The name for UnsafeRow HashMap
   private var hashMapTerm: String = _
@@ -485,19 +491,83 @@ case class HashAggregateExec(
       schemaLength <= sqlContext.conf.vectorizedAggregateMapMaxColumns
   }
 
+  /**
+    * Using the row-based hash map in HashAggregate is currently supported for all primitive
+    * data types during partial aggregation. However, we currently only enable the hash map for a
+    * subset of cases that've been verified to show performance improvements on our benchmarks
+    * subject to an internal conf that sets an upper limit on the maximum length of the aggregate
+    * key/value schema.
+    *
+    * This list of supported use-cases should be expanded over time.
+    */
+  private def enableRowBasedHashMap(ctx: CodegenContext): Boolean = {
+    val schemaLength = (groupingKeySchema ++ bufferSchema).length
+    val isSupported =
+      (groupingKeySchema ++ bufferSchema).forall(f => ctx.isPrimitiveType(f.dataType) ||
+        f.dataType.isInstanceOf[DecimalType] || f.dataType.isInstanceOf[StringType]) &&
+        bufferSchema.nonEmpty && modes.forall(mode => mode == Partial || mode == PartialMerge)
+
+    // Acting conservative and do not support byte array based decimal type for aggregate values
+    // for now.
+    val isNotByteArrayDecimalType = bufferSchema.map(_.dataType).filter(_.isInstanceOf[DecimalType])
+      .forall(!DecimalType.isByteArrayDecimalType(_))
+
+    isSupported  && isNotByteArrayDecimalType
+  }
+
+  private def setFastHashMapImpl(ctx: CodegenContext) = {
+    sqlContext.conf.enforceFastAggHashMapImpl match {
+      case "rowbased" =>
+        if (!enableRowBasedHashMap(ctx)) {
+          // scalastyle:off
+          System.err.println("Enforcing rowbased fast hashmap but it is not usable. "
+            + "Skipping any fast hashmap. Note that spark.sql.codegen.aggregate.map.enforce.impl"
+            + " should only be used in testing or benchmarking.")
+          // scalastyle:on
+        } else {
+          isFastHashMapEnabled = true
+          isRowBasedHashMapEnabled = true
+        }
+      case "vectorized" =>
+        if (!enableVectorizedHashMap(ctx)) {
+          // scalastyle:off
+          System.err.println("Enforcing vectorized fast hashmap but it is not usable. "
+            + "Skipping any fast hashmap. Note that spark.sql.codegen.aggregate.map.enforce.impl"
+            + " should only be used in testing or benchmarking.")
+          // scalastyle:on
+        } else {
+          isFastHashMapEnabled = true
+          isVectorizedHashMapEnabled = true
+        }
+      case "skip" =>
+      // no need to do anything, default sets all flags to be false
+      case _ =>
+        // doing some smart decision logic to pick between rowbased or vectorized fast hashmap
+        // TODO: make the decision based on more comprehensive benchmarking
+        // we now defaults to vectorized hashmap because it was used previously
+        if (!enableVectorizedHashMap(ctx)) {
+          isFastHashMapEnabled = true
+          isVectorizedHashMapEnabled = true
+        } else if (!enableVectorizedHashMap(ctx)) {
+          isFastHashMapEnabled = true
+          isRowBasedHashMapEnabled = true
+        }
+    }
+  }
+
   private def doProduceWithKeys(ctx: CodegenContext): String = {
     val initAgg = ctx.freshName("initAgg")
     ctx.addMutableState("boolean", initAgg, s"$initAgg = false;")
-    isVectorizedHashMapEnabled = enableVectorizedHashMap(ctx)
-    vectorizedHashMapTerm = ctx.freshName("vectorizedHashMap")
-    val vectorizedHashMapClassName = ctx.freshName("VectorizedHashMap")
+    setFastHashMapImpl(ctx)
+    fastHashMapTerm = ctx.freshName("fastHashMap")
+    val vectorizedHashMapClassName = ctx.freshName("FastHashMap")
     val vectorizedHashMapGenerator = new VectorizedHashMapGenerator(ctx, aggregateExpressions,
       vectorizedHashMapClassName, groupingKeySchema, bufferSchema)
     // Create a name for iterator from vectorized HashMap
     val iterTermForVectorizedHashMap = ctx.freshName("vectorizedHashMapIter")
     if (isVectorizedHashMapEnabled) {
-      ctx.addMutableState(vectorizedHashMapClassName, vectorizedHashMapTerm,
-        s"$vectorizedHashMapTerm = new $vectorizedHashMapClassName();")
+      ctx.addMutableState(vectorizedHashMapClassName, fastHashMapTerm,
+        s"$fastHashMapTerm = new $vectorizedHashMapClassName();")
       ctx.addMutableState(
         "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
         iterTermForVectorizedHashMap, "")
@@ -526,7 +596,7 @@ case class HashAggregateExec(
           ${child.asInstanceOf[CodegenSupport].produce(ctx, this)}
 
           ${if (isVectorizedHashMapEnabled) {
-              s"$iterTermForVectorizedHashMap = $vectorizedHashMapTerm.rowIterator();"} else ""}
+              s"$iterTermForVectorizedHashMap = $fastHashMapTerm.rowIterator();"} else ""}
 
           $iterTerm = $thisPlan.finishAggregate($hashMapTerm, $sorterTerm, $peakMemory, $spillSize);
         }
@@ -565,7 +635,7 @@ case class HashAggregateExec(
              |   if (shouldStop()) return;
              | }
              |
-             | $vectorizedHashMapTerm.close();
+             | $fastHashMapTerm.close();
            """.stripMargin)
       } else None
     }
@@ -650,7 +720,7 @@ case class HashAggregateExec(
              |if ($checkFallbackForGeneratedHashMap) {
              |  ${vectorizedRowKeys.map(_.code).mkString("\n")}
              |  if (${vectorizedRowKeys.map("!" + _.isNull).mkString(" && ")}) {
-             |    $vectorizedRowBuffer = $vectorizedHashMapTerm.findOrInsert(
+             |    $vectorizedRowBuffer = $fastHashMapTerm.findOrInsert(
              |        ${vectorizedRowKeys.map(_.value).mkString(", ")});
              |  }
              |}
