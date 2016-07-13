@@ -258,6 +258,14 @@ object SQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val OPTIMIZER_METADATA_ONLY = SQLConfigBuilder("spark.sql.optimizer.metadataOnly")
+    .doc("When true, enable the metadata-only query optimization that use the table's metadata " +
+      "to produce the partition columns instead of table scans. It applies when all the columns " +
+      "scanned are partition columns and the query has an aggregate operator that satisfies " +
+      "distinct semantics.")
+    .booleanConf
+    .createWithDefault(true)
+
   val COLUMN_NAME_OF_CORRUPT_RECORD = SQLConfigBuilder("spark.sql.columnNameOfCorruptRecord")
     .doc("The name of internal column for storing raw/un-parsed JSON records that fail to parse.")
     .stringConf
@@ -498,6 +506,17 @@ object SQLConf {
       .intConf
       .createWithDefault(3)
 
+  val ENFORCE_FAST_AGG_MAP_IMPL =
+    SQLConfigBuilder("spark.sql.codegen.aggregate.map.enforce.impl")
+      .internal()
+      .doc("Sets the implementation for fast hash map during aggregation. Could be one of the " +
+        "following: rowbased, vectorized, skip, auto. Defaults to auto, and should only be other " +
+        "values for testing purposes.")
+      .stringConf
+      .transform(_.toLowerCase())
+      .checkValues(Set("rowbased", "vectorized", "skip", "auto"))
+      .createWithDefault("auto")
+
   val FILE_SINK_LOG_DELETION = SQLConfigBuilder("spark.sql.streaming.fileSink.log.deletion")
     .internal()
     .doc("Whether to delete the expired log files in file stream sink.")
@@ -594,6 +613,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf with Logging {
 
   def metastorePartitionPruning: Boolean = getConf(HIVE_METASTORE_PARTITION_PRUNING)
 
+  def optimizerMetadataOnly: Boolean = getConf(OPTIMIZER_METADATA_ONLY)
+
   def wholeStageEnabled: Boolean = getConf(WHOLESTAGE_CODEGEN_ENABLED)
 
   def wholeStageMaxNumFields: Int = getConf(WHOLESTAGE_MAX_NUM_FIELDS)
@@ -662,6 +683,8 @@ private[sql] class SQLConf extends Serializable with CatalystConf with Logging {
   override def runSQLonFile: Boolean = getConf(RUN_SQL_ON_FILES)
 
   def vectorizedAggregateMapMaxColumns: Int = getConf(VECTORIZED_AGG_MAP_MAX_COLUMNS)
+
+  def enforceFastAggHashMapImpl: String = getConf(ENFORCE_FAST_AGG_MAP_IMPL)
 
   def variableSubstituteEnabled: Boolean = getConf(VARIABLE_SUBSTITUTE_ENABLED)
 
