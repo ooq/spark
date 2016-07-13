@@ -531,20 +531,24 @@ case class HashAggregateExec(
       case "rowbased" =>
         if (!enableRowBasedHashMap(ctx)) {
           // scalastyle:off
-          System.err.println("Enforcing rowbased fast hashmap but it is not usable. "
-            + "Skipping any fast hashmap. Note that spark.sql.codegen.aggregate.map.enforce.impl"
-            + " should only be used in testing or benchmarking.")
-          // scalastyle:on
+          if (modes.forall(mode => mode == Partial || mode == PartialMerge)) {
+            System.err.println("Enforcing rowbased fast hashmap but it is not usable. "
+              + "Skipping any fast hashmap. Note that spark.sql.codegen.aggregate.map.enforce.impl"
+              + " should only be used in testing or benchmarking.")
+            // scalastyle:on
+          }
         } else {
           isRowBasedHashMapEnabled = true
         }
       case "vectorized" =>
         if (!enableVectorizedHashMap(ctx)) {
           // scalastyle:off
-          System.err.println("Enforcing vectorized fast hashmap but it is not usable. "
-            + "Skipping any fast hashmap. Note that spark.sql.codegen.aggregate.map.enforce.impl"
-            + " should only be used in testing or benchmarking.")
-          // scalastyle:on
+          if (modes.forall(mode => mode == Partial || mode == PartialMerge)) {
+            System.err.println("Enforcing vectorized fast hashmap but it is not usable. "
+              + "Skipping any fast hashmap. Note that spark.sql.codegen.aggregate.map.enforce.impl"
+              + " should only be used in testing or benchmarking.")
+            // scalastyle:on
+          }
         } else {
           isVectorizedHashMapEnabled = true
         }
@@ -578,6 +582,8 @@ case class HashAggregateExec(
           fastHashMapClassName, groupingKeySchema, bufferSchema)
       }
 
+    val thisPlan = ctx.addReferenceObj("plan", this)
+
     // Create a name for iterator from vectorized HashMap
     val iterTermForFastHashMap = ctx.freshName("fastHashMapIter")
     if (isFastHashMapEnabled) {
@@ -592,13 +598,12 @@ case class HashAggregateExec(
           s"$fastHashMapTerm = new $fastHashMapClassName(" +
             s"agg_plan.getTaskMemoryManager(), agg_plan.getEmptyAggregationBuffer());")
         ctx.addMutableState(
-          "org.apache.spark.unsafe.KVIterator>",
+          "org.apache.spark.unsafe.KVIterator",
           iterTermForFastHashMap, "")
       }
     }
 
     // create hashMap
-    val thisPlan = ctx.addReferenceObj("plan", this)
     hashMapTerm = ctx.freshName("hashMap")
     val hashMapClassName = classOf[UnsafeFixedWidthAggregationMap].getName
     ctx.addMutableState(hashMapClassName, hashMapTerm, "")
@@ -672,7 +677,7 @@ case class HashAggregateExec(
          // TODO: not sure what this does now
          if (shouldStop()) return;
        }
-       $iterTermForFastHashMap.close();
+       $fastHashMapTerm.close();
      """
     }
 
@@ -697,7 +702,7 @@ case class HashAggregateExec(
            |   if (shouldStop()) return;
            | }
            |
-           | $iterTermForFastHashMap.close();
+           | $fastHashMapTerm.close();
          """.stripMargin
     }
 
@@ -921,11 +926,11 @@ case class HashAggregateExec(
      ${
         if (isVectorizedHashMapEnabled) {
           s"""
-             | UnsafeRow $fastRowBuffer = null;
+             | org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $fastRowBuffer = null;
            """.stripMargin
         } else {
           s"""
-             | org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $fastRowBuffer = null;
+             | UnsafeRow $fastRowBuffer = null;
            """.stripMargin
         }
       }

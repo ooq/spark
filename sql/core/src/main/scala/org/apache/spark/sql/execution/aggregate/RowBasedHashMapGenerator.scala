@@ -84,9 +84,9 @@ class RowBasedHashMapGenerator(
   }
 
   private def initializeAggregateHashMap(): String = {
-    val generatedSchema: String =
+    val generatedKeySchema: String =
       s"new org.apache.spark.sql.types.StructType()" +
-        (groupingKeySchema ++ bufferSchema).map { key =>
+        groupingKeySchema.map { key =>
           key.dataType match {
             case d: DecimalType =>
               s""".add("${key.name}", org.apache.spark.sql.types.DataTypes.createDecimalType(
@@ -96,7 +96,7 @@ class RowBasedHashMapGenerator(
           }
         }.mkString("\n").concat(";")
 
-    val generatedAggBufferSchema: String =
+    val generatedValueSchema: String =
       s"new org.apache.spark.sql.types.StructType()" +
         bufferSchema.map { key =>
           key.dataType match {
@@ -116,9 +116,8 @@ class RowBasedHashMapGenerator(
        |  private int numBuckets = (int) (capacity / loadFactor);
        |  private int maxSteps = 2;
        |  private int numRows = 0;
-       |  private org.apache.spark.sql.types.StructType schema = $generatedSchema
-       |  private org.apache.spark.sql.types.StructType aggregateBufferSchema =
-       |    $generatedAggBufferSchema
+       |  private org.apache.spark.sql.types.StructType keySchema = $generatedKeySchema
+       |  private org.apache.spark.sql.types.StructType valueSchema = $generatedValueSchema
        |  private Object emptyVBase;
        |  private long emptyVOff;
        |  private int emptyVLen;
@@ -130,10 +129,10 @@ class RowBasedHashMapGenerator(
        |    super(taskMemoryManager,
        |      taskMemoryManager.pageSizeBytes(),
        |      taskMemoryManager.getTungstenMemoryMode());
-       |    batch = org.apache.spark.sql.execution.vectorized.ColumnarBatch.allocate(schema,
-       |      org.apache.spark.memory.MemoryMode.ON_HEAP, capacity);
+       |    batch = org.apache.spark.sql.catalyst.expressions.RowBatch.allocate(keySchema,
+       |      valueSchema, taskMemoryManager, capacity);
        |
-       |    final UnsafeProjection valueProjection = UnsafeProjection.create(aggregateBufferSchema);
+       |    final UnsafeProjection valueProjection = UnsafeProjection.create(valueSchema);
        |    final byte[] emptyBuffer = valueProjection.apply(emptyAggregationBuffer).getBytes();
        |
        |    emptyVBase = emptyBuffer;
@@ -286,7 +285,7 @@ class RowBasedHashMapGenerator(
     s"""
        |public long spill(long size, org.apache.spark.memory.MemoryConsumer trigger)
        |  throws java.io.IOException {
-       |  return batch.spill();
+       |  return batch.spill(0, this);
        |}
      """.stripMargin
   }

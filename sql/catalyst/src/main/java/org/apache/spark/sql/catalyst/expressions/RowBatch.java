@@ -213,7 +213,7 @@ public final class RowBatch extends MemoryConsumer{
     /**
      * Returns an iterator to go through all rows
      */
-    public org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow> iterator() {
+    public org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow> rowIterator() {
         return new org.apache.spark.unsafe.KVIterator<UnsafeRow, UnsafeRow>() {
             private final UnsafeRow key = new UnsafeRow(keySchema.length());
             private final UnsafeRow value = new UnsafeRow(valueSchema.length());
