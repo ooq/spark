@@ -504,14 +504,14 @@ case class HashAggregateExec(
   }
 
   /**
-    * Using the row-based hash map in HashAggregate is currently supported for all primitive
-    * data types during partial aggregation. However, we currently only enable the hash map for a
-    * subset of cases that've been verified to show performance improvements on our benchmarks
-    * subject to an internal conf that sets an upper limit on the maximum length of the aggregate
-    * key/value schema.
-    *
-    * This list of supported use-cases should be expanded over time.
-    */
+   * Using the row-based hash map in HashAggregate is currently supported for all primitive
+   * data types during partial aggregation. However, we currently only enable the hash map for a
+   * subset of cases that've been verified to show performance improvements on our benchmarks
+   * subject to an internal conf that sets an upper limit on the maximum length of the aggregate
+   * key/value schema.
+   *
+   * This list of supported use-cases should be expanded over time.
+   */
   private def enableRowBasedHashMap(ctx: CodegenContext): Boolean = {
     val isSupported =
       (groupingKeySchema ++ bufferSchema).forall(f => ctx.isPrimitiveType(f.dataType) ||
