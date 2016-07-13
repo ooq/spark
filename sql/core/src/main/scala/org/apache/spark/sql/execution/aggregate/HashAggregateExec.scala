@@ -525,7 +525,6 @@ case class HashAggregateExec(
             + " should only be used in testing or benchmarking.")
           // scalastyle:on
         } else {
-          isFastHashMapEnabled = true
           isRowBasedHashMapEnabled = true
         }
       case "vectorized" =>
@@ -536,7 +535,6 @@ case class HashAggregateExec(
             + " should only be used in testing or benchmarking.")
           // scalastyle:on
         } else {
-          isFastHashMapEnabled = true
           isVectorizedHashMapEnabled = true
         }
       case "skip" =>
@@ -546,13 +544,12 @@ case class HashAggregateExec(
         // TODO: make the decision based on more comprehensive benchmarking
         // we now defaults to vectorized hashmap because it was used previously
         if (!enableVectorizedHashMap(ctx)) {
-          isFastHashMapEnabled = true
           isVectorizedHashMapEnabled = true
         } else if (!enableVectorizedHashMap(ctx)) {
-          isFastHashMapEnabled = true
           isRowBasedHashMapEnabled = true
         }
     }
+    isFastHashMapEnabled = isVectorizedHashMapEnabled || isRowBasedHashMapEnabled
   }
 
   private def doProduceWithKeys(ctx: CodegenContext): String = {
@@ -560,17 +557,33 @@ case class HashAggregateExec(
     ctx.addMutableState("boolean", initAgg, s"$initAgg = false;")
     setFastHashMapImpl(ctx)
     fastHashMapTerm = ctx.freshName("fastHashMap")
-    val vectorizedHashMapClassName = ctx.freshName("FastHashMap")
-    val vectorizedHashMapGenerator = new VectorizedHashMapGenerator(ctx, aggregateExpressions,
-      vectorizedHashMapClassName, groupingKeySchema, bufferSchema)
+    val fastHashMapClassName = ctx.freshName("FastHashMap")
+    val fastHashMapGenerator =
+      if (isVectorizedHashMapEnabled) {
+        new VectorizedHashMapGenerator(ctx, aggregateExpressions,
+          fastHashMapClassName, groupingKeySchema, bufferSchema)
+      } else {
+        new RowBasedHashMapGenerator(ctx, aggregateExpressions,
+          fastHashMapClassName, groupingKeySchema, bufferSchema)
+      }
+
     // Create a name for iterator from vectorized HashMap
-    val iterTermForVectorizedHashMap = ctx.freshName("vectorizedHashMapIter")
-    if (isVectorizedHashMapEnabled) {
-      ctx.addMutableState(vectorizedHashMapClassName, fastHashMapTerm,
-        s"$fastHashMapTerm = new $vectorizedHashMapClassName();")
-      ctx.addMutableState(
-        "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
-        iterTermForVectorizedHashMap, "")
+    val iterTermForFastHashMap = ctx.freshName("fastHashMapIter")
+    if (isFastHashMapEnabled) {
+      if (isVectorizedHashMapEnabled) {
+        ctx.addMutableState(fastHashMapClassName, fastHashMapTerm,
+          s"$fastHashMapTerm = new $fastHashMapClassName();")
+        ctx.addMutableState(
+          "java.util.Iterator<org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row>",
+          iterTermForFastHashMap, "")
+      } else {
+        ctx.addMutableState(fastHashMapClassName, fastHashMapTerm,
+          s"$fastHashMapTerm = new $fastHashMapClassName(" +
+            s"agg_plan.getTaskMemoryManager(), agg_plan.getEmptyAggregationBuffer());")
+        ctx.addMutableState(
+          "org.apache.spark.unsafe.KVIterator>",
+          iterTermForFastHashMap, "")
+      }
     }
 
     // create hashMap
@@ -588,15 +601,30 @@ case class HashAggregateExec(
     val doAgg = ctx.freshName("doAggregateWithKeys")
     val peakMemory = metricTerm(ctx, "peakMemory")
     val spillSize = metricTerm(ctx, "spillSize")
+
+    def generateGenerateCode(): String = {
+      if (isFastHashMapEnabled) {
+        if (isVectorizedHashMapEnabled) {
+          s"""
+               | ${fastHashMapGenerator.asInstanceOf[VectorizedHashMapGenerator].generate()}
+          """.stripMargin
+        } else {
+          s"""
+               | ${fastHashMapGenerator.asInstanceOf[RowBasedHashMapGenerator].generate()}
+          """.stripMargin
+        }
+      } else ""
+    }
+
     ctx.addNewFunction(doAgg,
       s"""
-        ${if (isVectorizedHashMapEnabled) vectorizedHashMapGenerator.generate() else ""}
+        ${generateGenerateCode}
         private void $doAgg() throws java.io.IOException {
           $hashMapTerm = $thisPlan.createHashMap();
           ${child.asInstanceOf[CodegenSupport].produce(ctx, this)}
 
-          ${if (isVectorizedHashMapEnabled) {
-              s"$iterTermForVectorizedHashMap = $fastHashMapTerm.rowIterator();"} else ""}
+          ${if (isFastHashMapEnabled) {
+              s"$iterTermForFastHashMap = $fastHashMapTerm.rowIterator();"} else ""}
 
           $iterTerm = $thisPlan.finishAggregate($hashMapTerm, $sorterTerm, $peakMemory, $spillSize);
         }
@@ -614,8 +642,8 @@ case class HashAggregateExec(
 
     // Iterate over the aggregate rows and convert them from ColumnarBatch.Row to UnsafeRow
     def outputFromGeneratedMap: Option[String] = {
-      if (isVectorizedHashMapEnabled) {
-        val row = ctx.freshName("vectorizedHashMapRow")
+      if (isFastHashMapEnabled) {
+        val row = ctx.freshName("fastHashMapRow")
         ctx.currentVars = null
         ctx.INPUT_ROW = row
         var schema: StructType = groupingKeySchema
@@ -624,11 +652,11 @@ case class HashAggregateExec(
           .map { case (attr, i) => BoundReference(i, attr.dataType, attr.nullable) })
         Option(
           s"""
-             | while ($iterTermForVectorizedHashMap.hasNext()) {
+             | while ($iterTermForFastHashMap.hasNext()) {
              |   $numOutput.add(1);
              |   org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row $row =
              |     (org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row)
-             |     $iterTermForVectorizedHashMap.next();
+             |     $iterTermForFastHashMap.next();
              |   ${generateRow.code}
              |   ${consume(ctx, Seq.empty, {generateRow.value})}
              |
