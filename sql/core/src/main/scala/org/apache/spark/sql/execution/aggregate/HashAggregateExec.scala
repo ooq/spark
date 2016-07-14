@@ -674,7 +674,6 @@ case class HashAggregateExec(
          UnsafeRow $bufferTerm = (UnsafeRow) $iterTermForFastHashMap.getValue();
          $outputCode
 
-         // TODO: not sure what this does now
          if (shouldStop()) return;
        }
        $fastHashMapTerm.close();
@@ -843,7 +842,7 @@ case class HashAggregateExec(
            |$effectiveCodes
            |// evaluate aggregate function
            |${evaluateVariables(rowBasedRowEvals)}
-           |// update b2b map row
+           |// update row based map row
            |${updateRowBasedRow.mkString("\n").trim}
            |
          """.stripMargin)
