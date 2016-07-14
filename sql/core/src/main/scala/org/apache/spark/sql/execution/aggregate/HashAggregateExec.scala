@@ -498,7 +498,6 @@ case class HashAggregateExec(
     // quite inefficient and can potentially OOM the executor.
     val isNotByteArrayDecimalType = bufferSchema.map(_.dataType).filter(_.isInstanceOf[DecimalType])
       .forall(!DecimalType.isByteArrayDecimalType(_))
-
     isSupported  && isNotByteArrayDecimalType &&
       schemaLength <= sqlContext.conf.vectorizedAggregateMapMaxColumns
   }
@@ -558,9 +557,9 @@ case class HashAggregateExec(
         // doing some smart decision logic to pick between rowbased or vectorized fast hashmap
         // TODO: make the decision based on more comprehensive benchmarking
         // we now defaults to vectorized hashmap because it was used previously
-        if (!enableVectorizedHashMap(ctx)) {
+        if (enableVectorizedHashMap(ctx)) {
           isVectorizedHashMapEnabled = true
-        } else if (!enableVectorizedHashMap(ctx)) {
+        } else if (enableVectorizedHashMap(ctx)) {
           isRowBasedHashMapEnabled = true
         }
     }
