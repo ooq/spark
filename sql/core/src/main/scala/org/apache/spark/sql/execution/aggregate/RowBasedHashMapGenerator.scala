@@ -256,6 +256,7 @@ class RowBasedHashMapGenerator(
        |        } else {
        |          buckets[idx] = numRows++;
        |        }
+       |        return vRow;
        |      } else {
        |        // No more space
        |        return null;
