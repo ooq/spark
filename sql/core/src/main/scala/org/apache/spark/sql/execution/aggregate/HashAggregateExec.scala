@@ -477,41 +477,11 @@ case class HashAggregateExec(
   }
 
   /**
-   * Using the vectorized hash map in HashAggregate is currently supported for all primitive
-   * data types during partial aggregation. However, we currently only enable the hash map for a
-   * subset of cases that've been verified to show performance improvements on our benchmarks
-   * subject to an internal conf that sets an upper limit on the maximum length of the aggregate
-   * key/value schema.
-   *
+   * A required check for any fast hash map implementation. Currently fast hash map is supported
+   * for primitive data types during partial aggregation.
    * This list of supported use-cases should be expanded over time.
    */
-  private def enableVectorizedHashMap(ctx: CodegenContext): Boolean = {
-    val schemaLength = (groupingKeySchema ++ bufferSchema).length
-    val isSupported =
-      (groupingKeySchema ++ bufferSchema).forall(f => ctx.isPrimitiveType(f.dataType) ||
-        f.dataType.isInstanceOf[DecimalType] || f.dataType.isInstanceOf[StringType]) &&
-        bufferSchema.nonEmpty && modes.forall(mode => mode == Partial || mode == PartialMerge)
-
-    // We do not support byte array based decimal type for aggregate values as
-    // ColumnVector.putDecimal for high-precision decimals doesn't currently support in-place
-    // updates. Due to this, appending the byte array in the vectorized hash map can turn out to be
-    // quite inefficient and can potentially OOM the executor.
-    val isNotByteArrayDecimalType = bufferSchema.map(_.dataType).filter(_.isInstanceOf[DecimalType])
-      .forall(!DecimalType.isByteArrayDecimalType(_))
-    isSupported  && isNotByteArrayDecimalType &&
-      schemaLength <= sqlContext.conf.vectorizedAggregateMapMaxColumns
-  }
-
-  /**
-   * Using the row-based hash map in HashAggregate is currently supported for all primitive
-   * data types during partial aggregation. However, we currently only enable the hash map for a
-   * subset of cases that've been verified to show performance improvements on our benchmarks
-   * subject to an internal conf that sets an upper limit on the maximum length of the aggregate
-   * key/value schema.
-   *
-   * This list of supported use-cases should be expanded over time.
-   */
-  private def enableRowBasedHashMap(ctx: CodegenContext): Boolean = {
+  private def checkIfFastHashMapSupported(ctx: CodegenContext): Boolean = {
     val isSupported =
       (groupingKeySchema ++ bufferSchema).forall(f => ctx.isPrimitiveType(f.dataType) ||
         f.dataType.isInstanceOf[DecimalType] || f.dataType.isInstanceOf[StringType]) &&
@@ -523,6 +493,27 @@ case class HashAggregateExec(
       .forall(!DecimalType.isByteArrayDecimalType(_))
 
     isSupported  && isNotByteArrayDecimalType
+  }
+
+  /**
+   * We currently only enable the vectorized hash map for a
+   * subset of cases that've been verified to show performance improvements on our benchmarks
+   * subject to an internal conf that sets an upper limit on the maximum length of the aggregate
+   * key/value schema.
+   *
+   */
+  private def enableVectorizedHashMap(ctx: CodegenContext): Boolean = {
+    val schemaLength = (groupingKeySchema ++ bufferSchema).length
+    checkIfFastHashMapSupported(ctx) &&
+      schemaLength <= sqlContext.conf.vectorizedAggregateMapMaxColumns
+  }
+
+  /**
+   * We currently only enable row based hash map if vectorized hash map is supported,
+   * and if we pass a requirement check to support fast hash map.
+   */
+  private def enableRowBasedHashMap(ctx: CodegenContext): Boolean = {
+    checkIfFastHashMapSupported(ctx)
   }
 
   private def setFastHashMapImpl(ctx: CodegenContext) = {
