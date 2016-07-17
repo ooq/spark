@@ -42,8 +42,6 @@ import org.apache.spark.unsafe.Platform;
 public final class SimpleRowBatch extends MemoryConsumer{
     private static final int DEFAULT_CAPACITY = 1 << 16;
 
-    private final TaskMemoryManager taskMemoryManager;
-
     private final StructType keySchema;
     private final StructType valueSchema;
     private final int capacity;
@@ -55,17 +53,10 @@ public final class SimpleRowBatch extends MemoryConsumer{
 
     // ids for current key row and value row being retrieved
     private int keyRowId = -1;
-    private int valueRowId = -1;
 
     // full addresses for key rows and value rows
     // TODO: opt: this could be eliminated if all fields are fixed length
-    private long[] keyFullAddress;
-    private long[] valueFullAddress;
-    // shortcuts for lengths, which can also be retrieved directly from UnsafeRow
-    // TODO: might want to remove this shortcut, retrieving directly from UnsafeRow could be
-    // faster due to cache locality
-    private int[] keyLength;
-    private int[] valueLength;
+    private long[] keyOffsets;
 
     // if all data types in the schema are fixed length
     private boolean allFixedLength;
@@ -118,7 +109,6 @@ public final class SimpleRowBatch extends MemoryConsumer{
 
     public UnsafeRow appendRow(Object kbase, long koff, int klen,
                                Object vbase, long voff, int vlen) {
-
         final long recordLength = 8 + klen + vlen + 8;
         // if run out of max supported rows or page size, return null
         if (numRows >= capacity || currentPage == null
@@ -137,8 +127,10 @@ public final class SimpleRowBatch extends MemoryConsumer{
         final Object base = currentPage.getBaseObject();
         long offset = currentPage.getBaseOffset() + pageCursor;
         final long recordOffset = offset;
-        Platform.putInt(base, offset, klen + vlen + 4);
-        Platform.putInt(base, offset + 4, klen);
+        if (!allFixedLength) { // we only put lengths info for variable length
+            Platform.putInt(base, offset, klen + vlen + 4);
+            Platform.putInt(base, offset + 4, klen);
+        }
         offset += 8;
         Platform.copyMemory(kbase, koff, base, offset, klen);
         offset += klen;
@@ -150,15 +142,10 @@ public final class SimpleRowBatch extends MemoryConsumer{
         Platform.putInt(base, offset, Platform.getInt(base, offset) + 1);
         pageCursor += recordLength;
 
-        final long storedKeyAddress = taskMemoryManager.encodePageNumberAndOffset(currentPage,
-                recordOffset);
-        keyFullAddress[numRows] = storedKeyAddress + 8;
-        valueFullAddress[numRows] = storedKeyAddress + 8 + klen;
-        keyLength[numRows] = klen;
-        valueLength[numRows] = vlen;
+
+        if (!allFixedLength) keyOffsets[numRows] = recordOffset + 8;
 
         keyRowId = numRows;
-        valueRowId = numRows;
         keyRow.pointTo(base, recordOffset + 8, klen);
         valueRow.pointTo(base, recordOffset + 8 + klen, vlen + 4);
         numRows++;
@@ -171,36 +158,25 @@ public final class SimpleRowBatch extends MemoryConsumer{
     public UnsafeRow getKeyRow(int rowId) {
         assert(rowId >= 0);
         assert(rowId < numRows);
-        if (keyRowId != rowId) {
-            long offset = getKeyOffsetForFixedLengthRecords(rowId);
-            keyRow.pointTo(currentAndOnlyBase, offset, klen);
+        if (keyRowId != rowId) { // if keyRowId == rowId, desired keyRow is already cached
+            if (allFixedLength) {
+                long offset = getKeyOffsetForFixedLengthRecords(rowId);
+                keyRow.pointTo(currentAndOnlyBase, offset, klen);
+            } else {
+                long offset = keyOffsets[rowId];
+                klen = Platform.getInt(currentAndOnlyBase, offset - 4);
+                keyRow.pointTo(currentAndOnlyBase, offset, klen);
+            }
+            // set keyRowId so we can check if desired row is cached
             keyRowId = rowId;
         }
         return keyRow;
     }
 
     /**
-     * Returns the value row in this batch at `rowId`. Returned value row is reused across calls.
-     * Should be avoided if `getValueFromKey()` gives better performance.
-     */
-    public UnsafeRow getValueRow(int rowId) {
-        assert(rowId >= 0);
-        assert(rowId < numRows);
-        if (valueRowId != rowId) {
-            long offset = getKeyOffsetForFixedLengthRecords(rowId) + klen;
-            valueRow.pointTo(currentAndOnlyBase, offset, vlen + 4);
-            valueRowId = rowId;
-        }
-        return valueRow;
-    }
-
-    /**
      * Returns the value row in this batch at `rowId`.
      * It can be a faster path if `keyRowId` is equal to `rowId`, which means the preceding
-     * key row has just been accessed. As this is often the case, this method should be preferred
-     * over `getValueRow()`.
-     * This method is faster than `getValueRow()` because it avoids address decoding, instead reuse
-     * the page and offset information from the preceding key row.
+     * key row has just been accessed. This is always the case so far.
      * Returned value row is reused across calls.
      */
     public UnsafeRow getValueFromKey(int rowId) {
@@ -208,10 +184,17 @@ public final class SimpleRowBatch extends MemoryConsumer{
             getKeyRow(rowId);
         }
         assert(rowId >= 0);
-        valueRow.pointTo(currentAndOnlyBase,
-                keyRow.getBaseOffset() + klen,
-                vlen + 4);
-        valueRowId = rowId;
+        if (allFixedLength) {
+            valueRow.pointTo(currentAndOnlyBase,
+                    keyRow.getBaseOffset() + klen,
+                    vlen + 4);
+        } else {
+            long offset = keyOffsets[rowId];
+            vlen = Platform.getInt(currentAndOnlyBase, offset - 8) - klen - 4;
+            valueRow.pointTo(currentAndOnlyBase,
+                    offset + klen,
+                    vlen + 4);
+        }
         return valueRow;
     }
 
@@ -232,8 +215,8 @@ public final class SimpleRowBatch extends MemoryConsumer{
             private long offsetInPage = 0;
             private int recordsInPage = 0;
 
-            private int klen;
-            private int vlen;
+            private int currentklen;
+            private int currentvlen;
             private int totalLength;
 
             private boolean inited = false;
@@ -257,12 +240,18 @@ public final class SimpleRowBatch extends MemoryConsumer{
                     if (!advanceToNextPage()) return false;
                 }
 
-                totalLength = Platform.getInt(pageBaseObject, offsetInPage);
-                klen = Platform.getInt(pageBaseObject, offsetInPage + 4);
-                vlen = totalLength - klen;
+                if (allFixedLength) {
+                    totalLength = klen + vlen + 4;
+                    currentklen = klen;
+                    currentvlen = vlen;
+                } else {
+                    totalLength = Platform.getInt(pageBaseObject, offsetInPage);
+                    klen = Platform.getInt(pageBaseObject, offsetInPage + 4);
+                    currentvlen = totalLength - currentklen - 4;
+                }
 
-                key.pointTo(pageBaseObject, offsetInPage + 8, klen);
-                value.pointTo(pageBaseObject, offsetInPage + 8 + klen, vlen);
+                key.pointTo(pageBaseObject, offsetInPage + 8, currentklen);
+                value.pointTo(pageBaseObject, offsetInPage + 8 + currentklen, currentvlen + 4);
                 offsetInPage += 4 + totalLength + 8;
                 recordsInPage -= 1;
                 return true;
@@ -306,17 +295,12 @@ public final class SimpleRowBatch extends MemoryConsumer{
         this.keySchema = keySchema;
         this.valueSchema = valueSchema;
         this.capacity = maxRows;
-        this.taskMemoryManager = manager;
-        this.keyFullAddress = new long[maxRows];
-        this.valueFullAddress = new long[maxRows];
-        this.keyLength = new int[maxRows];
-        this.valueLength = new int[maxRows];
 
         this.keyRow = new UnsafeRow(keySchema.length());
         this.valueRow = new UnsafeRow(valueSchema.length());
 
         // checking if there is any variable length fields
-        // there is probably more succint impl of this
+        // there is probably a more succint impl of this
         allFixedLength = true;
         for (String name : keySchema.fieldNames()) {
             allFixedLength = allFixedLength
@@ -326,10 +310,16 @@ public final class SimpleRowBatch extends MemoryConsumer{
             allFixedLength = allFixedLength
                     && UnsafeRow.isFixedLength(valueSchema.apply(name).dataType());
         }
-        klen = keySchema.defaultSize() + UnsafeRow.calculateBitSetWidthInBytes(keySchema.length());
-        vlen = valueSchema.defaultSize()
-                + UnsafeRow.calculateBitSetWidthInBytes(valueSchema.length());
-        recordLength = 8 + klen + vlen + 8;
+        if (allFixedLength) {
+            klen = keySchema.defaultSize()
+                    + UnsafeRow.calculateBitSetWidthInBytes(keySchema.length());
+            vlen = valueSchema.defaultSize()
+                    + UnsafeRow.calculateBitSetWidthInBytes(valueSchema.length());
+            recordLength = 8 + klen + vlen + 8;
+        } else {
+            // we only need the following data structures for variable length cases
+            this.keyOffsets = new long[maxRows];
+        }
 
         if (!acquireNewPage(64 * 1024 * 1024)) { //64MB
             currentPage = null;
