@@ -576,4 +576,272 @@ class AggregateBenchmark extends BenchmarkBase {
     benchmark.run()
   }
 
+  // This test does not do any benchmark, instead it produces generated code for vectorized
+  // and row-based hashmaps.
+  ignore("generated code comparison for vectorized vs. rowbased") {
+    val N = 20 << 23
+
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    sparkSession.range(N)
+      .selectExpr(
+        "id & 1023 as k1",
+        "cast (id & 1023 as string) as k2")
+      .createOrReplaceTempView("test")
+
+    // dataframe/query
+    val query = sparkSession.sql("select count(k1), sum(k1) from test group by k1, k2")
+
+    // vectorized
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", "vectorized")
+    query.queryExecution.debug.codegen()
+
+    // row based
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", "rowbased")
+    query.queryExecution.debug.codegen()
+  }
+
+  ignore("1 key field, 1 value field, varying distinct keys") {
+    val N = 20 << 23;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 0
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Distinct Keys", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 15) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 5) {
+          System.gc()
+          timeStart = System.nanoTime
+          sparkSession.range(N)
+            .selectExpr(
+              "cast(floor(rand() * " + (1 << i) + ") as long) as k0")
+            .createOrReplaceTempView("test")
+          sparkSession.sql("select sum(k0)" +
+            " from test group by k0").collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", 1 << i, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+    Num. Distinct Keys      No Fast Hashmap           Vectorized            Row-based
+                     1                   30                    8                   12
+                     2                   38                   13                   21
+                     4                   37                   12                   23
+                     8                   37                   11                   20
+                    16                   36                   11                   19
+                    32                   36                   10                   19
+                    64                   36                   11                   19
+                   128                   38                   16                   20
+                   256                   39                   17                   21
+                   512                   39                   18                   22
+                  1024                   41                   20                   23
+                  2048                   42                   20                   23
+                  4096                   46                   19                   23
+                  8192                   52                   19                   24
+                 16384                   53                   20                   26
+    Unit: ns/row
+    */
+  }
+
+  ignore("1 key field, varying value fields, 256 distinct keys") {
+    val N = 20 << 23;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 1
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Value Fields", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 11) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 3) {
+          System.gc()
+          timeStart = System.nanoTime
+          sparkSession.range(N)
+            .selectExpr(List.range(0, i)
+              .map(x => "cast(floor(rand() * " + 256 + ") as long) as k" + x): _*)
+            .createOrReplaceTempView("test")
+          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
+            " from test group by k0").collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", i, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+   Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
+                   1                   37                   18                   20
+                   2                   39                   22                   24
+                   3                   44                   28                   25
+                   4                   45                   30                   28
+                   5                   47                   36                   31
+                   6                   51                   37                   32
+                   7                   52                   39                   34
+                   8                   57                   41                   40
+                   9                   56                   43                   38
+                  10                   59                   49                   42
+    Unit: ns/row
+    */
+  }
+
+  ignore("varying key fields, 1 value field, 256 distinct keys") {
+    val N = 20 << 23;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 1
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Key Fields", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 11) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 3) {
+          System.gc()
+          timeStart = System.nanoTime
+          sparkSession.range(N)
+            .selectExpr(List.range(0, i)
+              .map(x => "cast(floor(rand() * "
+                + Math.round(Math.pow(256, 1d/i)) + ") as long) as k" + x): _*)
+            .createOrReplaceTempView("test")
+          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
+            " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", i, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+   Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
+                   1                   37                   18                   22
+                   2                   51                   27                   36
+                   3                   72                   49                   47
+                   4                   88                   63                   63
+                   5                  115                   79                   80
+    Unit: ns/row
+    */
+  }
+
+  ignore("varying key fields, varying value field, 256 distinct keys") {
+    val N = 20 << 23;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 1
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Total Fields", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 11) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 3) {
+          System.gc()
+          timeStart = System.nanoTime
+          val s = "cast(floor(rand() * " + Math.round(Math.pow(256, 1d/i)) + ") as long) as k"
+          sparkSession.range(N)
+            .selectExpr(List.range(0, i).map(x => s + x): _*)
+            .createOrReplaceTempView("test")
+          sparkSession.sql("select count(*)" +
+            " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", i * 2, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
+    */
+  }
+
 }
