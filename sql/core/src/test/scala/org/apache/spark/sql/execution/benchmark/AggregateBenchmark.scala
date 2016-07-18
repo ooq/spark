@@ -628,11 +628,11 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 5) {
           System.gc()
-          timeStart = System.nanoTime
           sparkSession.range(N)
             .selectExpr(
               "cast(floor(rand() * " + (1 << i) + ") as long) as k0")
             .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
           sparkSession.sql("select sum(k0)" +
             " from test group by k0").collect()
           timeEnd = System.nanoTime
@@ -650,23 +650,22 @@ class AggregateBenchmark extends BenchmarkBase {
     /*
     Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
     Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
-
-    Num. Distinct Keys      No Fast Hashmap           Vectorized            Row-based
-                     1                   30                    8                   12
-                     2                   38                   13                   21
-                     4                   37                   12                   23
-                     8                   37                   11                   20
-                    16                   36                   11                   19
-                    32                   36                   10                   19
-                    64                   36                   11                   19
-                   128                   38                   16                   20
-                   256                   39                   17                   21
-                   512                   39                   18                   22
-                  1024                   41                   20                   23
-                  2048                   42                   20                   23
-                  4096                   46                   19                   23
-                  8192                   52                   19                   24
-                 16384                   53                   20                   26
+      Num. Distinct Keys      No Fast Hashmap           Vectorized            Row-based
+                       1                   30                    8                   12
+                       2                   38                   13                   21
+                       4                   37                   12                   23
+                       8                   37                   11                   20
+                      16                   36                   11                   19
+                      32                   36                   10                   19
+                      64                   36                   11                   19
+                     128                   38                   16                   20
+                     256                   39                   17                   21
+                     512                   39                   18                   22
+                    1024                   41                   20                   23
+                    2048                   42                   20                   23
+                    4096                   46                   19                   23
+                    8192                   52                   19                   24
+                   16384                   53                   20                   26
     Unit: ns/row
     */
   }
@@ -697,11 +696,11 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 3) {
           System.gc()
-          timeStart = System.nanoTime
           sparkSession.range(N)
             .selectExpr(List.range(0, i)
               .map(x => "cast(floor(rand() * " + 256 + ") as long) as k" + x): _*)
             .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
           sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
             " from test group by k0").collect()
           timeEnd = System.nanoTime
@@ -719,18 +718,17 @@ class AggregateBenchmark extends BenchmarkBase {
     /*
     Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
     Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
-
-   Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
-                   1                   37                   18                   20
-                   2                   39                   22                   24
-                   3                   44                   28                   25
-                   4                   45                   30                   28
-                   5                   47                   36                   31
-                   6                   51                   37                   32
-                   7                   52                   39                   34
-                   8                   57                   41                   40
-                   9                   56                   43                   38
-                  10                   59                   49                   42
+     Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
+                     1                   37                   18                   20
+                     2                   39                   22                   24
+                     3                   44                   28                   25
+                     4                   45                   30                   28
+                     5                   47                   36                   31
+                     6                   51                   37                   32
+                     7                   52                   39                   34
+                     8                   57                   41                   40
+                     9                   56                   43                   38
+                    10                   59                   49                   42
     Unit: ns/row
     */
   }
@@ -761,12 +759,12 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 3) {
           System.gc()
-          timeStart = System.nanoTime
           sparkSession.range(N)
             .selectExpr(List.range(0, i)
               .map(x => "cast(floor(rand() * "
                 + Math.round(Math.pow(256, 1d/i)) + ") as long) as k" + x): _*)
             .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
           sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
             " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
           timeEnd = System.nanoTime
@@ -784,19 +782,18 @@ class AggregateBenchmark extends BenchmarkBase {
     /*
     Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
     Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
-
-   Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
-                   1                   37                   18                   22
-                   2                   51                   27                   36
-                   3                   72                   49                   47
-                   4                   88                   63                   63
-                   5                  115                   79                   80
+     Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
+                     1                   37                   18                   22
+                     2                   51                   27                   36
+                     3                   72                   49                   47
+                     4                   88                   63                   63
+                     5                  115                   79                   80
     Unit: ns/row
     */
   }
 
-  ignore("varying key fields, varying value field, 256 distinct keys") {
-    val N = 20 << 23;
+  test("varying key fields, varying value field, 256 distinct keys") {
+    val N = 20 << 22;
 
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
@@ -819,17 +816,19 @@ class AggregateBenchmark extends BenchmarkBase {
         sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
         var j = 0
         var minTime: Long = 1000
-        while (j < 3) {
+        while (j < 5) {
           System.gc()
-          timeStart = System.nanoTime
-          val s = "cast(floor(rand() * " + Math.round(Math.pow(256, 1d/i)) + ") as long) as k"
+          // val s = "id & " + (1 << (i-1) - 1) + " as k"
+          val s = "id & " + 255 + " as k"
           sparkSession.range(N)
             .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
           sparkSession.sql("select count(*)" +
             " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
           timeEnd = System.nanoTime
           nsPerRow = (timeEnd - timeStart) / N
+          // printf("nsPerRow i=%d j=%d mode=%10s %20s\n", i, j, mode, nsPerRow)
           if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
           j += 1
         }
@@ -841,6 +840,21 @@ class AggregateBenchmark extends BenchmarkBase {
     printf("Unit: ns/row\n")
 
     /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+       Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
+                       2                   24                    9                   11
+                       4                   31                   11                   14
+                       6                   38                   20                   14
+                       8                   46                   19                   16
+                      10                   53                   29                   18
+                      12                   60                   31                   22
+                      14                   70                   41                   23
+                      16                   78                   44                   26
+                      18                   84                   36                   25
+                      20                   95                   45                   29
+    Unit: ns/row
     */
   }
 
