@@ -603,7 +603,7 @@ class AggregateBenchmark extends BenchmarkBase {
   }
 
   ignore("1 key field, 1 value field, varying distinct keys") {
-    val N = 20 << 23;
+    val N = 20 << 22;
 
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
@@ -670,8 +670,8 @@ class AggregateBenchmark extends BenchmarkBase {
     */
   }
 
-  ignore("1 key field, varying value fields, 256 distinct keys") {
-    val N = 20 << 23;
+  ignore("1 key field, varying value fields, 16384 distinct keys") {
+    val N = 20 << 22;
 
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
@@ -694,11 +694,11 @@ class AggregateBenchmark extends BenchmarkBase {
         sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
         var j = 0
         var minTime: Long = 1000
-        while (j < 3) {
+        while (j < 5) {
           System.gc()
           sparkSession.range(N)
             .selectExpr(List.range(0, i)
-              .map(x => "cast(floor(rand() * " + 256 + ") as long) as k" + x): _*)
+              .map(x => "cast(floor(rand() * " + 16384 + ") as long) as k" + x): _*)
             .createOrReplaceTempView("test")
           timeStart = System.nanoTime
           sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
@@ -716,25 +716,11 @@ class AggregateBenchmark extends BenchmarkBase {
     printf("Unit: ns/row\n")
 
     /*
-    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
-    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
-     Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
-                     1                   37                   18                   20
-                     2                   39                   22                   24
-                     3                   44                   28                   25
-                     4                   45                   30                   28
-                     5                   47                   36                   31
-                     6                   51                   37                   32
-                     7                   52                   39                   34
-                     8                   57                   41                   40
-                     9                   56                   43                   38
-                    10                   59                   49                   42
-    Unit: ns/row
     */
   }
 
-  ignore("varying key fields, 1 value field, 256 distinct keys") {
-    val N = 20 << 23;
+  ignore("varying key fields, 1 value field, 16384 distinct keys") {
+    val N = 20 << 22;
 
     var timeStart: Long = 0L
     var timeEnd: Long = 0L
@@ -757,12 +743,11 @@ class AggregateBenchmark extends BenchmarkBase {
         sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
         var j = 0
         var minTime: Long = 1000
-        while (j < 3) {
+        while (j < 5) {
           System.gc()
+          val s = "id & " + 16383 + " as k"
           sparkSession.range(N)
-            .selectExpr(List.range(0, i)
-              .map(x => "cast(floor(rand() * "
-                + Math.round(Math.pow(256, 1d/i)) + ") as long) as k" + x): _*)
+            .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
           timeStart = System.nanoTime
           sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
@@ -780,15 +765,6 @@ class AggregateBenchmark extends BenchmarkBase {
     printf("Unit: ns/row\n")
 
     /*
-    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
-    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
-     Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
-                     1                   37                   18                   22
-                     2                   51                   27                   36
-                     3                   72                   49                   47
-                     4                   88                   63                   63
-                     5                  115                   79                   80
-    Unit: ns/row
     */
   }
 
@@ -818,7 +794,6 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 5) {
           System.gc()
-          // val s = "id & " + (1 << (i-1) - 1) + " as k"
           val s = "id & " + 255 + " as k"
           sparkSession.range(N)
             .selectExpr(List.range(0, i).map(x => s + x): _*)
@@ -844,17 +819,69 @@ class AggregateBenchmark extends BenchmarkBase {
     Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
 
        Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
-                       2                   24                    9                   11
-                       4                   31                   11                   14
-                       6                   38                   20                   14
-                       8                   46                   19                   16
-                      10                   53                   29                   18
-                      12                   60                   31                   22
-                      14                   70                   41                   23
-                      16                   78                   44                   26
-                      18                   84                   36                   25
-                      20                   95                   45                   29
+                       2                   23                   12                   13
+                       4                   31                   14                   14
+                       6                   40                   18                   16
+                       8                   49                   22                   19
+                      10                   57                   25                   20
+                      12                   66                   28                   24
+                      14                   74                   35                   25
+                      16                   81                   42                   30
+                      18                   91                   44                   29
+                      20                  103                   43                   35
     Unit: ns/row
+    */
+  }
+
+
+  test("varying key fields, varying value field, 16384 distinct keys") {
+    val N = 20 << 22;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 1
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Total Fields", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 11) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 5) {
+          System.gc()
+          // val s = "id & " + (1 << (i-1) - 1) + " as k"
+          val s = "id & " + 16383 + " as k"
+          sparkSession.range(N)
+            .selectExpr(List.range(0, i).map(x => s + x): _*)
+            .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
+          sparkSession.sql("select count(*)" +
+            " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          // printf("nsPerRow i=%d j=%d mode=%10s %20s\n", i, j, mode, nsPerRow)
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", i * 2, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
     */
   }
 
