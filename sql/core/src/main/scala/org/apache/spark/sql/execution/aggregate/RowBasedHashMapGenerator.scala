@@ -108,6 +108,12 @@ class RowBasedHashMapGenerator(
           }
         }.mkString("\n").concat(";")
 
+    val numVarLenFields = groupingKeys.map(_.dataType).count {
+      case dt if UnsafeRow.isFixedLength(dt) => false
+      // TODO: consider large decimal and interval type
+      case _ => true
+    }
+
     s"""
        |  private org.apache.spark.sql.catalyst.expressions.SimpleRowBatch batch;
        |  private int[] buckets;
@@ -122,6 +128,16 @@ class RowBasedHashMapGenerator(
        |  private long emptyVOff;
        |  private int emptyVLen;
        |  private boolean isBatchFull = false;
+       |  private UnsafeRow keyRowResult = new UnsafeRow(${groupingKeySchema.length});
+       |  private org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder keyRowHolder
+       |          = new org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder(keyRowResult,
+       |            ${numVarLenFields * 32});
+       |  private org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter keyRowWriter
+       |          = new org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter(
+       |              keyRowHolder,
+       |              ${groupingKeySchema.length});
+       |  private Object kbase = keyRowResult.getBaseObject();
+       |  private long koff = keyRowResult.getBaseOffset();
        |
        |
        |  public $generatedClassName(
@@ -212,14 +228,8 @@ class RowBasedHashMapGenerator(
    *
    */
   private def generateFindOrInsert(): String = {
-    val numVarLenFields = groupingKeys.map(_.dataType).count {
-      case dt if UnsafeRow.isFixedLength(dt) => false
-      // TODO: consider large decimal and interval type
-      case _ => true
-    }
-
     val createUnsafeRowForKey = groupingKeys.zipWithIndex.map { case (key: Buffer, ordinal: Int) =>
-      s"agg_rowWriter.write(${ordinal}, ${key.name})"}
+      s"keyRowWriter.write(${ordinal}, ${key.name})"}
       .mkString(";\n")
 
     s"""
@@ -233,21 +243,11 @@ class RowBasedHashMapGenerator(
        |    if (buckets[idx] == -1) {
        |      if (numRows < capacity && !isBatchFull) {
        |        // creating the unsafe for new entry
-       |        UnsafeRow agg_result = new UnsafeRow(${groupingKeySchema.length});
-       |        org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder agg_holder
-       |          = new org.apache.spark.sql.catalyst.expressions.codegen.BufferHolder(agg_result,
-       |            ${numVarLenFields * 32});
-       |        org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter agg_rowWriter
-       |          = new org.apache.spark.sql.catalyst.expressions.codegen.UnsafeRowWriter(
-       |              agg_holder,
-       |              ${groupingKeySchema.length});
-       |        agg_holder.reset(); //TODO: investigate if reset or zeroout are actually needed
-       |        agg_rowWriter.zeroOutNullBytes();
+       |        keyRowHolder.reset();
+       |        keyRowWriter.zeroOutNullBytes();
        |        ${createUnsafeRowForKey};
-       |        agg_result.setTotalSize(agg_holder.totalSize());
-       |        Object kbase = agg_result.getBaseObject();
-       |        long koff = agg_result.getBaseOffset();
-       |        int klen = agg_result.getSizeInBytes();
+       |        keyRowResult.setTotalSize(keyRowHolder.totalSize());
+       |        int klen = keyRowResult.getSizeInBytes();
        |
        |        UnsafeRow vRow
        |            = batch.appendRow(kbase, koff, klen, emptyVBase, emptyVOff, emptyVLen);
