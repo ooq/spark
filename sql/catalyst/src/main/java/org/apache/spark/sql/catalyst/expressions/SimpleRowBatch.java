@@ -251,8 +251,9 @@ public final class SimpleRowBatch extends MemoryConsumer{
             public boolean next() {
                 if (!inited) init();
                 //searching for the next non empty page is records is now zero
-                while (recordsInPage == 0) {
-                    if (!advanceToNextPage()) return false;
+                if (recordsInPage == 0) {
+                    freeCurrentPage();
+                    return false;
                 }
 
                 if (allFixedLength) {
@@ -288,18 +289,8 @@ public final class SimpleRowBatch extends MemoryConsumer{
                 // do nothing
             }
 
-            private boolean advanceToNextPage() {
-                if (currentPage != null) freePage(currentPage); //free before advance
-                if (dataPages.size() > 0) {
-                    currentPage = dataPages.remove();
-                    pageBaseObject = currentPage.getBaseObject();
-                    offsetInPage = currentPage.getBaseOffset();
-                    recordsInPage = Platform.getInt(pageBaseObject, offsetInPage);
-                    offsetInPage += 4;
-                    return true;
-                } else {
-                    return false;
-                }
+            private void freeCurrentPage() {
+                if (currentPage != null) freePage(currentPage);
             }
         };
     }
