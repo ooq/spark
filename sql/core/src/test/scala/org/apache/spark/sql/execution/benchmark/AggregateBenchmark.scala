@@ -301,11 +301,11 @@ class AggregateBenchmark extends BenchmarkBase {
     }
 
     /**
-    Intel(R) Core(TM) i7-4558U CPU @ 2.80GHz
-      cube:                               Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
-      -------------------------------------------------------------------------------------------
-      cube codegen=false                       3188 / 3392          1.6         608.2       1.0X
-      cube codegen=true                        1239 / 1394          4.2         236.3       2.6X
+      * Intel(R) Core(TM) i7-4558U CPU @ 2.80GHz
+      * cube:                               Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
+      * -------------------------------------------------------------------------------------------
+      * cube codegen=false                       3188 / 3392          1.6         608.2       1.0X
+      * cube codegen=true                        1239 / 1394          4.2         236.3       2.6X
      */
   }
 
@@ -750,7 +750,7 @@ class AggregateBenchmark extends BenchmarkBase {
             .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
           timeStart = System.nanoTime
-          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
+          sparkSession.sql("select sum(k0)" +
             " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
           timeEnd = System.nanoTime
           nsPerRow = (timeEnd - timeStart) / N
@@ -799,7 +799,7 @@ class AggregateBenchmark extends BenchmarkBase {
             .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
           timeStart = System.nanoTime
-          sparkSession.sql("select count(*)" +
+          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
             " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
           timeEnd = System.nanoTime
           nsPerRow = (timeEnd - timeStart) / N
@@ -813,28 +813,10 @@ class AggregateBenchmark extends BenchmarkBase {
       i += 1
     }
     printf("Unit: ns/row\n")
-
-    /*
-    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
-    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
-
-       Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
-                       2                   23                   12                   13
-                       4                   31                   14                   14
-                       6                   40                   18                   16
-                       8                   49                   22                   19
-                      10                   57                   25                   20
-                      12                   66                   28                   24
-                      14                   74                   35                   25
-                      16                   81                   42                   30
-                      18                   91                   44                   29
-                      20                  103                   43                   35
-    Unit: ns/row
-    */
   }
 
 
-  test("varying key fields, varying value field, 16384 distinct keys") {
+  test("varying key fields, varying value field, varying distinct keys") {
     val N = 20 << 22;
 
     var timeStart: Long = 0L
@@ -860,13 +842,12 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 5) {
           System.gc()
-          // val s = "id & " + (1 << (i-1) - 1) + " as k"
-          val s = "id & " + 16383 + " as k"
+          val s = "id & " + (1 << (i-1) - 1) + " as k"
           sparkSession.range(N)
             .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
           timeStart = System.nanoTime
-          sparkSession.sql("select count(*)" +
+          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
             " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
           timeEnd = System.nanoTime
           nsPerRow = (timeEnd - timeStart) / N
