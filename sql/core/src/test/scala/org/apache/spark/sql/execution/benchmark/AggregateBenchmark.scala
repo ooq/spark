@@ -602,7 +602,76 @@ class AggregateBenchmark extends BenchmarkBase {
     query.queryExecution.debug.codegen()
   }
 
-  ignore("1 key field, 1 value field, varying distinct keys") {
+  ignore("1 key field, 1 value field, distinct linear keys") {
+    val N = 20 << 22;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 0
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Distinct Keys", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 15) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 5) {
+          System.gc()
+          sparkSession.range(N)
+            .selectExpr(
+              "id & " + ((1 << i) - 1) + " as k0")
+            .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
+          sparkSession.sql("select sum(k0)" +
+            " from test group by k0").collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", 1 << i, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+      Num. Distinct Keys      No Fast Hashmap           Vectorized            Row-based
+                       1                   21                   13                   11
+                       2                   23                   14                   13
+                       4                   23                   14                   14
+                       8                   23                   14                   14
+                      16                   23                   12                   13
+                      32                   24                   12                   13
+                      64                   24                   14                   16
+                     128                   24                   14                   13
+                     256                   25                   14                   14
+                     512                   25                   16                   14
+                    1024                   25                   16                   15
+                    2048                   26                   12                   15
+                    4096                   27                   15                   15
+                    8192                   33                   16                   15
+                   16384                   34                   15                   15
+    Unit: ns/row
+    */
+  }
+
+  ignore("1 key field, 1 value field, distinct random keys") {
     val N = 20 << 22;
 
     var timeStart: Long = 0L
@@ -650,27 +719,28 @@ class AggregateBenchmark extends BenchmarkBase {
     /*
     Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
     Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
       Num. Distinct Keys      No Fast Hashmap           Vectorized            Row-based
-                       1                   30                    8                   12
-                       2                   38                   13                   21
-                       4                   37                   12                   23
-                       8                   37                   11                   20
-                      16                   36                   11                   19
-                      32                   36                   10                   19
-                      64                   36                   11                   19
-                     128                   38                   16                   20
-                     256                   39                   17                   21
-                     512                   39                   18                   22
-                    1024                   41                   20                   23
-                    2048                   42                   20                   23
-                    4096                   46                   19                   23
-                    8192                   52                   19                   24
-                   16384                   53                   20                   26
+                       1                   32                    9                   13
+                       2                   39                   16                   22
+                       4                   39                   14                   23
+                       8                   39                   13                   22
+                      16                   38                   13                   20
+                      32                   38                   13                   20
+                      64                   38                   13                   20
+                     128                   37                   16                   21
+                     256                   36                   17                   22
+                     512                   38                   17                   21
+                    1024                   39                   18                   21
+                    2048                   41                   18                   21
+                    4096                   44                   18                   22
+                    8192                   49                   20                   23
+                   16384                   52                   23                   25
     Unit: ns/row
     */
   }
 
-  ignore("1 key field, varying value fields, 16384 distinct keys") {
+  ignore("1 key field, varying value fields, 16 linear distinct keys") {
     val N = 20 << 22;
 
     var timeStart: Long = 0L
@@ -697,11 +767,10 @@ class AggregateBenchmark extends BenchmarkBase {
         while (j < 5) {
           System.gc()
           sparkSession.range(N)
-            .selectExpr(List.range(0, i)
-              .map(x => "cast(floor(rand() * " + 16384 + ") as long) as k" + x): _*)
+            .selectExpr("id & " + 15  + " as k0")
             .createOrReplaceTempView("test")
           timeStart = System.nanoTime
-          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
+          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + 0 + ")").mkString(",") +
             " from test group by k0").collect()
           timeEnd = System.nanoTime
           nsPerRow = (timeEnd - timeStart) / N
@@ -716,10 +785,25 @@ class AggregateBenchmark extends BenchmarkBase {
     printf("Unit: ns/row\n")
 
     /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+       Num. Value Fields      No Fast Hashmap           Vectorized            Row-based
+                       1                   24                   15                   12
+                       2                   25                   24                   14
+                       3                   29                   25                   17
+                       4                   31                   32                   22
+                       5                   33                   40                   24
+                       6                   36                   36                   27
+                       7                   38                   44                   28
+                       8                   47                   50                   32
+                       9                   52                   55                   37
+                      10                   59                   59                   45
+    Unit: ns/row
     */
   }
 
-  ignore("varying key fields, 1 value field, 16384 distinct keys") {
+  ignore("varying key fields, 1 value field, 16 linear distinct keys") {
     val N = 20 << 22;
 
     var timeStart: Long = 0L
@@ -745,7 +829,7 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 5) {
           System.gc()
-          val s = "id & " + 16383 + " as k"
+          val s = "id & " + 15 + " as k"
           sparkSession.range(N)
             .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
@@ -765,10 +849,25 @@ class AggregateBenchmark extends BenchmarkBase {
     printf("Unit: ns/row\n")
 
     /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+         Num. Key Fields      No Fast Hashmap           Vectorized            Row-based
+                       1                   24                   15                   13
+                       2                   31                   20                   14
+                       3                   37                   22                   17
+                       4                   46                   26                   18
+                       5                   53                   27                   20
+                       6                   61                   29                   23
+                       7                   69                   36                   25
+                       8                   78                   37                   27
+                       9                   88                   43                   30
+                      10                   92                   45                   33
+    Unit: ns/row
     */
   }
 
-  test("varying key fields, varying value field, 256 distinct keys") {
+  ignore("varying key fields, varying value field, 16 linear distinct keys") {
     val N = 20 << 22;
 
     var timeStart: Long = 0L
@@ -794,7 +893,7 @@ class AggregateBenchmark extends BenchmarkBase {
         var minTime: Long = 1000
         while (j < 5) {
           System.gc()
-          val s = "id & " + 255 + " as k"
+          val s = "id & " + 15 + " as k"
           sparkSession.range(N)
             .selectExpr(List.range(0, i).map(x => s + x): _*)
             .createOrReplaceTempView("test")
@@ -813,10 +912,93 @@ class AggregateBenchmark extends BenchmarkBase {
       i += 1
     }
     printf("Unit: ns/row\n")
+
+    /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+       Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
+                       2                   24                   14                   12
+                       4                   32                   28                   17
+                       6                   42                   29                   21
+                       8                   53                   36                   24
+                      10                   62                   44                   29
+                      12                   77                   50                   34
+                      14                   93                   61                   37
+                      16                  109                   75                   41
+                      18                  124                   88                   51
+                      20                  145                   97                   70
+    Unit: ns/row
+    */
+  }
+
+  ignore("varying key fields, varying value field, 512 linear distinct keys") {
+    val N = 20 << 22;
+
+    var timeStart: Long = 0L
+    var timeEnd: Long = 0L
+    var nsPerRow: Long = 0L
+    var i = 1
+    sparkSession.conf.set("spark.sql.codegen.wholeStage", "true")
+    sparkSession.conf.set("spark.sql.codegen.aggregate.map.columns.max", "30")
+
+    // scalastyle:off
+    println(Benchmark.getJVMOSInfo())
+    println(Benchmark.getProcessorName())
+    printf("%20s %20s %20s %20s\n", "Num. Total Fields", "No Fast Hashmap",
+      "Vectorized", "Row-based")
+    // scalastyle:on
+
+    val modes = List("skip", "vectorized", "rowbased")
+
+    while (i < 11) {
+      val results = modes.map(mode => {
+        sparkSession.conf.set("spark.sql.codegen.aggregate.map.enforce.impl", mode)
+        var j = 0
+        var minTime: Long = 1000
+        while (j < 5) {
+          System.gc()
+          val s = "id & " + 511 + " as k"
+          sparkSession.range(N)
+            .selectExpr(List.range(0, i).map(x => s + x): _*)
+            .createOrReplaceTempView("test")
+          timeStart = System.nanoTime
+          sparkSession.sql("select " + List.range(0, i).map(x => "sum(k" + x + ")").mkString(",") +
+            " from test group by " + List.range(0, i).map(x => "k" + x).mkString(",")).collect()
+          timeEnd = System.nanoTime
+          nsPerRow = (timeEnd - timeStart) / N
+          // printf("nsPerRow i=%d j=%d mode=%10s %20s\n", i, j, mode, nsPerRow)
+          if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
+          j += 1
+        }
+        minTime
+      })
+      printf("%20s %20s %20s %20s\n", i * 2, results(0), results(1), results(2))
+      i += 1
+    }
+    printf("Unit: ns/row\n")
+
+    /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+       Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
+                       2                   26                   16                   13
+                       4                   36                   24                   17
+                       6                   45                   30                   22
+                       8                   54                   33                   27
+                      10                   64                   38                   30
+                      12                   74                   47                   35
+                      14                   95                   54                   39
+                      16                  114                   72                   44
+                      18                  129                   70                   51
+                      20                  150                   91                   72
+    Unit: ns/row
+    */
   }
 
 
-  test("varying key fields, varying value field, varying distinct keys") {
+  ignore("varying key fields, varying value field, varying linear distinct keys") {
     val N = 20 << 22;
 
     var timeStart: Long = 0L
@@ -863,6 +1045,36 @@ class AggregateBenchmark extends BenchmarkBase {
     printf("Unit: ns/row\n")
 
     /*
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Mac OS X 10.11.5
+    Intel(R) Core(TM) i7-4980HQ CPU @ 2.80GHz
+
+       Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
+                       2                   24                   11                   10
+                       4                   33                   25                   16
+                       6                   42                   30                   21
+                       8                   53                   44                   24
+                      10                   65                   52                   27
+                      12                   74                   47                   33
+                      14                   92                   69                   35
+                      16                  109                   77                   40
+                      18                  127                   75                   49
+                      20                  143                   80                   66
+    Unit: ns/row
+
+    Java HotSpot(TM) 64-Bit Server VM 1.8.0_91-b14 on Linux 3.13.0-74-generic
+    Intel(R) Xeon(R) CPU E5-2676 v3 @ 2.40GHz
+       Num. Total Fields      No Fast Hashmap           Vectorized            Row-based
+                       2                   38                   15                   15
+                       4                   50                   25                   25
+                       6                   65                   35                   30
+                       8                   79                   42                   35
+                      10                   93                   50                   43
+                      12                  108                   58                   48
+                      14                  120                   71                   57
+                      16                  145                   79                   62
+                      18                  166                   88                   77
+                      20                  189                   96                   98
+    Unit: ns/row
     */
   }
 
