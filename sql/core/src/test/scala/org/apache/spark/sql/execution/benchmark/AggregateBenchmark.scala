@@ -300,13 +300,13 @@ class AggregateBenchmark extends BenchmarkBase {
         .cube("k1", "k2").sum("id").collect()
     }
 
-    /**
-      * Intel(R) Core(TM) i7-4558U CPU @ 2.80GHz
-      * cube:                               Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
-      * -------------------------------------------------------------------------------------------
-      * cube codegen=false                       3188 / 3392          1.6         608.2       1.0X
-      * cube codegen=true                        1239 / 1394          4.2         236.3       2.6X
-     */
+    /*
+    Intel(R) Core(TM) i7-4558U CPU @ 2.80GHz
+    cube:                               Best/Avg Time(ms)    Rate(M/s)   Per Row(ns)   Relative
+    -------------------------------------------------------------------------------------------
+    cube codegen=false                       3188 / 3392          1.6         608.2       1.0X
+    cube codegen=true                        1239 / 1394          4.2         236.3       2.6X
+    */
   }
 
   ignore("hash and BytesToBytesMap") {
