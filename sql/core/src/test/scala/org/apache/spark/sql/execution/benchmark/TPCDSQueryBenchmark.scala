@@ -44,6 +44,7 @@ object TPCDSQueryBenchmark {
       .set("spark.driver.memory", "5g")
       .set("spark.executor.memory", "5g")
       .set("spark.sql.autoBroadcastJoinThreshold", (20 * 1024 * 1024).toString)
+      .set("spark.sql.files.maxPartitionBytes", (1024 * 1024 * 1024).toString)
 
   val spark = SparkSession.builder.config(conf).getOrCreate()
 
@@ -112,11 +113,11 @@ object TPCDSQueryBenchmark {
         }
         var j = 0
         var minTime: Long = 10000000
-        while (j < 3) {
+        while (j < 10) {
           System.gc()
           val timeStart = System.nanoTime
           spark.sql(queryString).collect()
-          //spark.sql(queryString).queryExecution.debug.codegen()
+          //if(mode == "vectorized") spark.sql(queryString).queryExecution.debug.codegen()
           val timeEnd = System.nanoTime
           val nsPerRow = (timeEnd - timeStart) / 1000 / 1000
           if (j > 1 && minTime > nsPerRow) minTime = nsPerRow
@@ -169,6 +170,6 @@ object TPCDSQueryBenchmark {
     // dataLocation below needs to be set to the location where the generated data is stored.
     val dataLocation = "/Users/qifan/Data/tpcds-07-19-E/"
 
-    tpcdsAll(dataLocation, queries = leftQueries)
+    tpcdsAll(dataLocation, queries = Seq("q1"))
   }
 }

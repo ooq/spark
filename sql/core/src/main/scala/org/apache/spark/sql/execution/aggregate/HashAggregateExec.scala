@@ -723,7 +723,6 @@ case class HashAggregateExec(
 
        if (shouldStop()) return;
      }
-
      $iterTerm.close();
      if ($sorterTerm == null) {
        $hashMapTerm.free();
