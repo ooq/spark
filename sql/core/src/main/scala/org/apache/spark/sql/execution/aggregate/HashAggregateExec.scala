@@ -550,7 +550,7 @@ case class HashAggregateExec(
         // we now defaults to vectorized hashmap because it was used previously
         if (enableVectorizedHashMap(ctx)) {
           isVectorizedHashMapEnabled = true
-        } else if (enableVectorizedHashMap(ctx)) {
+        } else if (enableRowBasedHashMap(ctx)) {
           isRowBasedHashMapEnabled = true
         }
     }
