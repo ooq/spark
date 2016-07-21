@@ -227,7 +227,8 @@ case class HashAggregateExec(
        |   long $beforeAgg = System.nanoTime();
        |   $doAgg();
        |   $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
-       |
+       |   long timeMs = (System.nanoTime() - $beforeAgg) / 1000000;
+       |   ${if (isFastHashMapRunnable) "System.out.println(timeMs);" else ""}
        |   // output the result
        |   ${genResult.trim}
        |
@@ -290,6 +291,8 @@ case class HashAggregateExec(
   private var isRowBasedHashMapEnabled: Boolean = false
   // auxiliary flag, true if any of two above is true
   private var isFastHashMapEnabled: Boolean = false
+
+  private var isFastHashMapRunnable: Boolean = false
 
   // The name for UnsafeRow HashMap
   private var hashMapTerm: String = _
@@ -561,6 +564,7 @@ case class HashAggregateExec(
     val initAgg = ctx.freshName("initAgg")
     ctx.addMutableState("boolean", initAgg, s"$initAgg = false;")
     setFastHashMapImpl(ctx)
+    isFastHashMapRunnable = checkIfFastHashMapSupported(ctx)
     fastHashMapTerm = ctx.freshName("fastHashMap")
     val fastHashMapClassName = ctx.freshName("FastHashMap")
     val fastHashMapGenerator =
@@ -704,6 +708,8 @@ case class HashAggregateExec(
        long $beforeAgg = System.nanoTime();
        $doAgg();
        $aggTime.add((System.nanoTime() - $beforeAgg) / 1000000);
+       long timeMs = (System.nanoTime() - $beforeAgg) / 1000000;
+       ${if (isFastHashMapRunnable) "System.out.println(timeMs);" else ""}
      }
 
      // output the result
