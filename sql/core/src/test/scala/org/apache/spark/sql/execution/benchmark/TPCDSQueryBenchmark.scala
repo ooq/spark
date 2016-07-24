@@ -98,7 +98,8 @@ object TPCDSQueryBenchmark {
       }
       benchmark.run()
       */
-      val modes = List("skip", "vectorized", "rowbased")
+      //val modes = List("skip", "vectorized", "rowbased")
+      val modes = List("skip")
       val results = modes.map(mode => {
         println("name = " + name + " mode = " + mode)
         mode match {
@@ -168,8 +169,8 @@ object TPCDSQueryBenchmark {
     // https://github.com/databricks/spark-sql-perf/blob/master/README.md to generate the TPCDS data
     // locally (preferably with a scale factor of 5 for benchmarking). Thereafter, the value of
     // dataLocation below needs to be set to the location where the generated data is stored.
-    val dataLocation = "/Users/qifan/Data/tpcds-07-19-E/"
+    val dataLocation = "/Users/qifan/Data/tpcds-07-19-D/"
 
-    tpcdsAll(dataLocation, queries = Seq("q1"))
+    tpcdsAll(dataLocation, queries = Seq("q17"))
   }
 }

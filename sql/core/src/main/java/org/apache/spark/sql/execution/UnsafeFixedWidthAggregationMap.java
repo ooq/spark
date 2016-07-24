@@ -220,7 +220,7 @@ public final class UnsafeFixedWidthAggregationMap {
    * Free the memory associated with this map. This is idempotent and can be called multiple times.
    */
   public void free() {
-    map.free();
+    System.out.println("number of keys " + map.numKeys()); map.free();
   }
 
   @SuppressWarnings("UseOfSystemOutOrSystemErr")

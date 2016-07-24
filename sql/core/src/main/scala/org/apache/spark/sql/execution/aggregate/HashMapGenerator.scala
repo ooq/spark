@@ -129,6 +129,7 @@ abstract class HashMapGenerator(
   protected final def generateClose(): String = {
     s"""
        |public void close() {
+       |  System.out.println("number of rows: " + numRows);
        |  batch.close();
        |}
      """.stripMargin
