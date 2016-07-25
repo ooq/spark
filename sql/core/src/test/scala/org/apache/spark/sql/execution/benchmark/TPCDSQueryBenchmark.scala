@@ -99,7 +99,7 @@ object TPCDSQueryBenchmark {
       benchmark.run()
       */
       //val modes = List("skip", "vectorized", "rowbased")
-      val modes = List("skip")
+      val modes = List("vectorized", "rowbased")
       val results = modes.map(mode => {
         println("name = " + name + " mode = " + mode)
         mode match {
@@ -171,6 +171,6 @@ object TPCDSQueryBenchmark {
     // dataLocation below needs to be set to the location where the generated data is stored.
     val dataLocation = "/Users/qifan/Data/tpcds-07-19-D/"
 
-    tpcdsAll(dataLocation, queries = Seq("q17"))
+    tpcdsAll(dataLocation, queries = Seq("q23a"))
   }
 }
