@@ -43,7 +43,7 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
   }
 
   private val byteOutputStream = new ByteArrayOutputStreamWithZeroCopyByteBuffer()
-  private val ser = dep.serializer.getClass()
+  private val ser = dep.serializer
   private val shuffleId = dep.shuffleId
   private val blockId = ShuffleBlockId(shuffleId, partitionId, bucketId)
 
@@ -58,8 +58,7 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
 
   def open() {
     compressionStream = serializerManager.wrapForCompression(blockId, byteOutputStream)
-    serializationStream = ser.newInstance()
-      .asInstanceOf[SerializerInstance].serializeStream(compressionStream)
+    serializationStream = ser.newInstance().serializeStream(compressionStream)
     initialized = true
   }
 

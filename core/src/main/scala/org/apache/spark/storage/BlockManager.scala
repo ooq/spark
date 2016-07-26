@@ -823,9 +823,9 @@ private[spark] class BlockManager(
       if (blockWasSuccessfullyStored) {
         Some(size)
       } else {
-        Some(0)
+        Some(0L)
       }
-    }.getOrElse(0)
+    }.getOrElse(0L)
   }
 
   /**
