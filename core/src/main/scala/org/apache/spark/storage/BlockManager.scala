@@ -740,6 +740,94 @@ private[spark] class BlockManager(
     doPutBytes(blockId, bytes, level, implicitly[ClassTag[T]], tellMaster)
   }
 
+  def putBytesAndReturnSize[T: ClassTag](
+                             blockId: BlockId,
+                             bytes: ChunkedByteBuffer,
+                             level: StorageLevel,
+                             tellMaster: Boolean = true): Long = {
+    require(bytes != null, "Bytes is null")
+    return doPutBytesAndReturnSize(blockId, bytes, level, implicitly[ClassTag[T]], tellMaster)
+  }
+
+  private def doPutBytesAndReturnSize[T](
+                             blockId: BlockId,
+                             bytes: ChunkedByteBuffer,
+                             level: StorageLevel,
+                             classTag: ClassTag[T],
+                             tellMaster: Boolean = true,
+                             keepReadLock: Boolean = false): Long = {
+    doPut(blockId, level, classTag, tellMaster = tellMaster, keepReadLock = keepReadLock) { info =>
+      val startTimeMs = System.currentTimeMillis
+      // Since we're storing bytes, initiate the replication before storing them locally.
+      // This is faster as data is already serialized and ready to send.
+      val replicationFuture = if (level.replication > 1) {
+        Future {
+          // This is a blocking action and should run in futureExecutionContext which is a cached
+          // thread pool
+          replicate(blockId, bytes, level, classTag)
+        }(futureExecutionContext)
+      } else {
+        null
+      }
+
+      val size = bytes.size
+
+      if (level.useMemory) {
+        // Put it in memory first, even if it also has useDisk set to true;
+        // We will drop it to disk later if the memory store can't hold it.
+        val putSucceeded = if (level.deserialized) {
+          val values =
+            serializerManager.dataDeserializeStream(blockId, bytes.toInputStream())(classTag)
+          memoryStore.putIteratorAsValues(blockId, values, classTag) match {
+            case Right(_) => true
+            case Left(iter) =>
+              // If putting deserialized values in memory failed, we will put the bytes directly to
+              // disk, so we don't need this iterator and can close it to free resources earlier.
+              iter.close()
+              false
+          }
+        } else {
+          memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes)
+        }
+        if (!putSucceeded && level.useDisk) {
+          logWarning(s"Persisting block $blockId to disk instead.")
+          diskStore.putBytes(blockId, bytes)
+        }
+      } else if (level.useDisk) {
+        diskStore.putBytes(blockId, bytes)
+      }
+
+      val putBlockStatus = getCurrentBlockStatus(blockId, info)
+      val blockWasSuccessfullyStored = putBlockStatus.storageLevel.isValid
+      if (blockWasSuccessfullyStored) {
+        // Now that the block is in either the memory, externalBlockStore, or disk store,
+        // tell the master about it.
+        info.size = size
+        if (tellMaster) {
+          reportBlockStatus(blockId, info, putBlockStatus)
+        }
+        Option(TaskContext.get()).foreach { c =>
+          c.taskMetrics().incUpdatedBlockStatuses(blockId -> putBlockStatus)
+        }
+      }
+      logDebug("Put block %s locally took %s".format(blockId, Utils.getUsedTimeMs(startTimeMs)))
+      if (level.replication > 1) {
+        // Wait for asynchronous replication to finish
+        try {
+          Await.ready(replicationFuture, Duration.Inf)
+        } catch {
+          case NonFatal(t) =>
+            throw new Exception("Error occurred while waiting for replication to finish", t)
+        }
+      }
+      if (blockWasSuccessfullyStored) {
+        Some(size)
+      } else {
+        Some(0)
+      }
+    }.getOrElse(0)
+  }
+
   /**
    * Put the given bytes according to the given level in one of the block stores, replicating
    * the values if necessary.
