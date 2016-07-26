@@ -24,12 +24,12 @@ import org.apache.spark.{ShuffleDependency, SparkEnv, TaskContext}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.serializer.{SerializationStream, Serializer}
-import org.apache.spark.shuffle.{BaseShuffleHandle, IndexShuffleBlockResolver, ShuffleWriter}
+import org.apache.spark.shuffle.{BaseShuffleHandle, MemoryShuffleBlockResolver, ShuffleWriter}
 import org.apache.spark.storage.{BlockManager, ShuffleBlockId, StorageLevel}
 
 /** A ShuffleWriter that stores all shuffle data in memory using the block manager. */
 private[spark] class MemoryShuffleWriter[K, V](
-    shuffleBlockResolver: IndexShuffleBlockResolver,
+    shuffleBlockResolver: MemoryShuffleBlockResolver,
     handle: BaseShuffleHandle[K, V, _],
     mapId: Int,
     context: TaskContext)
@@ -77,7 +77,7 @@ private[spark] class MemoryShuffleWriter[K, V](
       bytesWritten
     }
     if (success) {
-      shuffleBlockResolver.removeDataByMap(dep.shuffleId, mapId)
+      shuffleBlockResolver.addShuffleOutput(dep.shuffleId, mapId, numBuckets)
       Some(MapStatus(SparkEnv.get.blockManager.blockManagerId, sizes))
     } else {
       None

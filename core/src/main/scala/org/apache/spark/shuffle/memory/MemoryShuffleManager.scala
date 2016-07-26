@@ -30,7 +30,7 @@ import org.apache.spark.shuffle._
 private[spark] class MemoryShuffleManager(conf: SparkConf) extends ShuffleManager {
   private[this] val numMapsForShuffle = new ConcurrentHashMap[Int, Int]()
 
-  override val shuffleBlockResolver = new IndexShuffleBlockResolver(conf)
+  override val shuffleBlockResolver = new MemoryShuffleBlockResolver(conf)
 
   override def registerShuffle[K, V, C](
                                          shuffleId: Int,
@@ -55,12 +55,7 @@ private[spark] class MemoryShuffleManager(conf: SparkConf) extends ShuffleManage
   }
 
   override def unregisterShuffle(shuffleId: Int): Boolean = {
-    Option(numMapsForShuffle.remove(shuffleId)).foreach { numMaps =>
-      (0 until numMaps).foreach { mapId =>
-        shuffleBlockResolver.removeDataByMap(shuffleId, mapId)
-      }
-    }
-    true
+    shuffleBlockResolver.removeShuffle(shuffleId)
   }
 
   override def stop(): Unit = {
