@@ -59,13 +59,16 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
     val serializerInstance = dep.serializer.newInstance()
 
+    println("serializer used on reducer " + dep.serializer)
+
     // Create a key/value iterator for each stream
     val recordIter = wrappedStreams.flatMap { wrappedStream =>
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.
       println("getting a deserialized stream")
-      serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
+      val itr = serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
+      itr
     }
 
     // Update the context task metrics for each record read.
@@ -97,6 +100,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       require(!dep.mapSideCombine, "Map-side combine without Aggregator specified!")
       interruptibleIter.asInstanceOf[Iterator[Product2[K, C]]]
     }
+
 
     // Sort the output if there is a sort ordering defined.
     dep.keyOrdering match {

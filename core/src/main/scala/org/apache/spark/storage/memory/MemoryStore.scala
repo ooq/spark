@@ -399,6 +399,7 @@ private[spark] class MemoryStore(
   }
 
   def getBytes(blockId: BlockId): Option[ChunkedByteBuffer] = {
+    println("Getting bytes for block " + blockId)
     val entry = entries.synchronized { entries.get(blockId) }
     entry match {
       case null => None

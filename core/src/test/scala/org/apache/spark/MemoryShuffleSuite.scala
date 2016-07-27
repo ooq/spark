@@ -58,7 +58,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
   test("memory shuffle simple test") {
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
     sc = new SparkContext("local", "test", myConf)
-    val pairs = sc.parallelize(Array((1, 1), (1, 3), (1, 2), (1, 3), (2, 1)), 1)
+    val pairs = sc.parallelize(Array((1, 1), (1, 2), (1, 3), (2, 1)), 1)
     val groups = pairs.groupByKey(1).collect()
     assert(groups.size === 2)
     val valuesFor1 = groups.find(_._1 == 1).get._2
