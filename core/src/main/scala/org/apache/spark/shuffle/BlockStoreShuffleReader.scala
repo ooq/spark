@@ -53,6 +53,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
     // Wrap the streams for compression based on configuration
     val wrappedStreams = blockFetcherItr.map { case (blockId, inputStream) =>
+      println("getting wrapped stream for blockId " + blockId)
       serializerManager.wrapForCompression(blockId, inputStream)
     }
 
@@ -63,6 +64,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       // Note: the asKeyValueIterator below wraps a key/value iterator inside of a
       // NextIterator. The NextIterator makes sure that close() is called on the
       // underlying InputStream when all records have been read.
+      println("getting a deserialized stream")
       serializerInstance.deserializeStream(wrappedStream).asKeyValueIterator
     }
 
@@ -70,6 +72,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
     val readMetrics = context.taskMetrics.createTempShuffleReadMetrics()
     val metricIter = CompletionIterator[(Any, Any), Iterator[(Any, Any)]](
       recordIter.map { record =>
+        println("showing record " + record)
         readMetrics.incRecordsRead(1)
         record
       },

@@ -787,6 +787,7 @@ private[spark] class BlockManager(
               false
           }
         } else {
+          println("putting blockid " + blockId + " with a size of " + size)
           memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes)
         }
         if (!putSucceeded && level.useDisk) {
@@ -953,6 +954,12 @@ private[spark] class BlockManager(
     val result: Option[T] = try {
       val res = putBody(putBlockInfo)
       blockWasSuccessfullyStored = res.isEmpty
+      val i = (res match {
+        case Some(x:Long) => x
+        case _ => 0L
+      })
+      // println("res is " + res + " i == " + i )
+      blockWasSuccessfullyStored = blockWasSuccessfullyStored || (i > 0)
       res
     } finally {
       if (blockWasSuccessfullyStored) {
@@ -963,6 +970,7 @@ private[spark] class BlockManager(
         }
       } else {
         blockInfoManager.removeBlock(blockId)
+        new Throwable().printStackTrace()
         logWarning(s"Putting block $blockId failed")
       }
     }

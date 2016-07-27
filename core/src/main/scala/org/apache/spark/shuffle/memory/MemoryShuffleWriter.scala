@@ -17,15 +17,9 @@
 
 package org.apache.spark.shuffle.memory
 
-import java.io.{ByteArrayOutputStream, OutputStream}
-import java.nio.ByteBuffer
-
-import org.apache.spark.{ShuffleDependency, SparkEnv, TaskContext}
-import org.apache.spark.executor.ShuffleWriteMetrics
+import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.scheduler.MapStatus
-import org.apache.spark.serializer.{SerializationStream, Serializer}
 import org.apache.spark.shuffle.{BaseShuffleHandle, MemoryShuffleBlockResolver, ShuffleWriter}
-import org.apache.spark.storage.{BlockManager, ShuffleBlockId, StorageLevel}
 
 /** A ShuffleWriter that stores all shuffle data in memory using the block manager. */
 private[spark] class MemoryShuffleWriter[K, V](
