@@ -70,4 +70,40 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
     assert(valuesFor2.toList.sorted === List(1))
   }
 
+  test("memory shuffle benchmark") {
+    val N = 1 << 22
+    val myConf = conf.clone().set("spark.shuffle.compress", "false")
+         .set("spark.shuffle.manager", "memory")
+      //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
+    sc = new SparkContext("local", "test", myConf)
+    var i = 0
+    while (i < 1) {
+      val pairs = sc.parallelize((1 to N).map(x => (x & 7, x)), 1)
+      val start = System.nanoTime()
+      val groups = pairs.groupByKey(1).count()
+      val end = System.nanoTime()
+      println("time spent is " + (end - start) / 1000000 + " ms.")
+      //assert(groups == 8)
+      i += 1
+    }
+  }
+
+  test("sort shuffle benchmark") {
+    val N = 1 << 22
+    val myConf = conf.clone().set("spark.shuffle.compress", "false")
+      .set("spark.shuffle.manager", "sort")
+    //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
+    sc = new SparkContext("local", "test", myConf)
+    var i = 0
+    while (i < 1) {
+      val pairs = sc.parallelize((1 to N).map(x => (x & 7, x)), 1)
+      val start = System.nanoTime()
+      val groups = pairs.groupByKey(1).count()
+      val end = System.nanoTime()
+      println("time spent is " + (end - start) / 1000000 + " ms.")
+      //assert(groups == 8)
+      i += 1
+    }
+  }
+
 }

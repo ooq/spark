@@ -788,7 +788,6 @@ private[spark] class BlockManager(
               false
           }
         } else {
-          println("putting blockid " + blockId + " with a size of " + size)
           memoryStore.putBytes(blockId, size, level.memoryMode, () => bytes)
         }
         if (!putSucceeded && level.useDisk) {
