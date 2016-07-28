@@ -147,6 +147,7 @@ private[spark] class MemoryStore(
       val bytes = _bytes()
       assert(bytes.size == size)
       val entry = new SerializedMemoryEntry[T](bytes, memoryMode, implicitly[ClassTag[T]])
+      logInfo("putting entry " + entry)
       entries.synchronized {
         entries.put(blockId, entry)
       }
@@ -399,13 +400,15 @@ private[spark] class MemoryStore(
   }
 
   def getBytes(blockId: BlockId): Option[ChunkedByteBuffer] = {
-    println("Getting bytes for block " + blockId)
+    logInfo("Getting bytes for block " + blockId)
     val entry = entries.synchronized { entries.get(blockId) }
     entry match {
       case null => None
       case e: DeserializedMemoryEntry[_] =>
         throw new IllegalArgumentException("should only call getBytes on serialized blocks")
-      case SerializedMemoryEntry(bytes, _, _) => Some(bytes)
+      case SerializedMemoryEntry(bytes, _, _) =>
+        logInfo("getting chunkedbytebuffer for bytes " + bytes)
+        Some(bytes)
     }
   }
 

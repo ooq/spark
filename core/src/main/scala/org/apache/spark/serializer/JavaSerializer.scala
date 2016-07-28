@@ -72,7 +72,9 @@ private[spark] class JavaDeserializationStream(in: InputStream, loader: ClassLoa
       }
   }
 
-  def readObject[T: ClassTag](): T = objIn.readObject().asInstanceOf[T]
+  def readObject[T: ClassTag](): T = {
+    objIn.readObject().asInstanceOf[T]
+  }
   def close() { objIn.close() }
 }
 

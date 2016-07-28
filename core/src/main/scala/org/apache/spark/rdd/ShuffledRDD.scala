@@ -57,6 +57,7 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
 
   /** Set a serializer for this RDD's shuffle, or null to use the default (spark.serializer) */
   def setSerializer(serializer: Serializer): ShuffledRDD[K, V, C] = {
+    logInfo("setting serializer for shuffledRDD " + serializer)
     this.userSpecifiedSerializer = Option(serializer)
     this
   }
@@ -80,6 +81,8 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
   }
 
   override def getDependencies: Seq[Dependency[_]] = {
+    logInfo("userSpecifiedSerializer " + userSpecifiedSerializer)
+    logInfo("serializerManager " + SparkEnv.get.serializerManager)
     val serializer = userSpecifiedSerializer.getOrElse {
       val serializerManager = SparkEnv.get.serializerManager
       if (mapSideCombine) {

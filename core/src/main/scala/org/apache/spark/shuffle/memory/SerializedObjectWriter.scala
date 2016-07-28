@@ -39,7 +39,6 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
     */
   private class ByteArrayOutputStreamWithZeroCopyByteBuffer extends ByteArrayOutputStream {
     def getByteBuffer(): ChunkedByteBuffer = {
-      println("printing buf for ultimate debugging! count = " + size() + " buf: " +  buf(0))
       new ChunkedByteBuffer(Array(ByteBuffer.wrap(buf, 0, size())))
     }
   }
@@ -59,11 +58,8 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
   private var serializationStream: SerializationStream = null
 
   def open() {
-    println("Double check this open method")
     compressionStream = serializerManager.wrapForCompression(blockId, byteOutputStream)
     serializationStream = ser.newInstance().serializeStream(compressionStream)
-    println("serializer " + ser)
-    println("checking sort " + dep.keyOrdering)
     initialized = true
   }
 
@@ -71,7 +67,6 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
     if (!initialized) {
       open()
     }
-    println("wring this value into stream " + value)
     serializationStream.writeObject(value)
   }
 
@@ -86,7 +81,6 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
           byteOutputStream.getByteBuffer(),
           StorageLevel.MEMORY_ONLY_SER,
           tellMaster = false)
-        println("result is " + result)
         return result
       }
     }

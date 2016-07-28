@@ -208,7 +208,7 @@ final class ShuffleBlockFetcherIterator(
     var totalBlocks = 0
     for ((address, blockInfos) <- blocksByAddress) {
       totalBlocks += blockInfos.size
-      println("address: " + address + " id: "
+      logInfo("address: " + address + " id: "
         + address.executorId + " thisId: " + blockManager.blockManagerId.executorId)
       if (address.executorId == blockManager.blockManagerId.executorId) {
         // Filter out zero-sized blocks
@@ -258,7 +258,7 @@ final class ShuffleBlockFetcherIterator(
       val blockId = iter.next()
       try {
         val buf = blockManager.getBlockData(blockId)
-        println("fetching local block " + blockId)
+        logInfo("fetching local block " + blockId + " buf: " + buf)
         shuffleMetrics.incLocalBlocksFetched(1)
         shuffleMetrics.incLocalBytesRead(buf.size)
         buf.retain()
@@ -316,7 +316,7 @@ final class ShuffleBlockFetcherIterator(
 
     result match {
       case SuccessFetchResult(_, address, size, buf, isNetworkReqDone) =>
-        println("buffer size " + buf.size)
+        logInfo("iterating buffer, currently " + buf)
         if (address != blockManager.blockManagerId) {
           shuffleMetrics.incRemoteBytesRead(buf.size)
           shuffleMetrics.incRemoteBlocksFetched(1)
@@ -337,6 +337,7 @@ final class ShuffleBlockFetcherIterator(
 
       case SuccessFetchResult(blockId, address, _, buf, _) =>
         try {
+          logInfo("converting into BufferReleasingInputStream")
           (result.blockId, new BufferReleasingInputStream(buf.createInputStream(), this))
         } catch {
           case NonFatal(t) =>

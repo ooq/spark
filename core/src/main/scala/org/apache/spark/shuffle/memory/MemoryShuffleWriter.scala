@@ -44,10 +44,8 @@ private[spark] class MemoryShuffleWriter[K, V](
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     val iter = if (dep.aggregator.isDefined) {
       if (dep.mapSideCombine) {
-        println("mapsidecombine: " + records)
         dep.aggregator.get.combineValuesByKey(records, context)
       } else {
-        println("no mapsidecombine: " + records)
         records
       }
     } else {
@@ -58,9 +56,8 @@ private[spark] class MemoryShuffleWriter[K, V](
 
     // Write the data to the appropriate bucket.
     for (elem <- iter) {
-      println("peeking the elem " + elem)
       val bucketId = dep.partitioner.getPartition(elem._1)
-      shuffleData(bucketId).write(elem)
+      shuffleData(bucketId).write(elem._1, elem._2)
       shuffleWriteMetrics.incRecordsWritten(1)
     }
   }
