@@ -65,7 +65,7 @@ private[spark] class NoCopyShuffleReader[K, C](
         val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
         dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context)
       } else {
-        // println("combining original records on the reduccer side.")
+        // println("combining original records on the reducer side.")
         // We don't know the value type, but also don't care -- the dependency *should*
         // have made sure its compatible w/ this aggregator, which will convert the value
         // type to the combined type C

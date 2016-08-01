@@ -298,7 +298,7 @@ object SparkEnv extends Logging {
     val shortShuffleMgrNames = Map(
       "sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName,
       "tungsten-sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName,
-      "memory" -> classOf[org.apache.spark.shuffle.memory.MemoryShuffleManager].getName),
+      "memory" -> classOf[org.apache.spark.shuffle.memory.MemoryShuffleManager].getName,
       "nocopy" -> classOf[org.apache.spark.shuffle.nocopy.NoCopyShuffleManager].getName)
     val shuffleMgrName = conf.get("spark.shuffle.manager", "sort")
     val shuffleMgrClass = shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase, shuffleMgrName)

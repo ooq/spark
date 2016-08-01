@@ -753,7 +753,6 @@ private[spark] class BlockManager(
     return doPutBytesAndReturnSize(blockId, bytes, level, implicitly[ClassTag[T]], tellMaster)
   }
 
-
   def putMyBuffer[T: ClassTag](buffer: Queue[Any]) : Boolean = {
     myBuffer = buffer
     return true
@@ -763,7 +762,9 @@ private[spark] class BlockManager(
     return new NextIterator[(Any, Any)] {
       override protected def getNext() = {
         try {
-          (myBuffer.dequeue(), myBuffer.dequeue())
+          val key = myBuffer.dequeue()
+          val value = myBuffer.dequeue()
+          (key, value)
         } catch {
           case eof: Exception =>
             finished = true
