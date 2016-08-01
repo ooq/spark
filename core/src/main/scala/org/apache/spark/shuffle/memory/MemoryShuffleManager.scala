@@ -36,6 +36,7 @@ private[spark] class MemoryShuffleManager(conf: SparkConf) extends ShuffleManage
                                          shuffleId: Int,
                                          numMaps: Int,
                                          dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
+    println("register shuffle for memory manager")
     new BaseShuffleHandle(shuffleId, numMaps, dependency)
   }
 

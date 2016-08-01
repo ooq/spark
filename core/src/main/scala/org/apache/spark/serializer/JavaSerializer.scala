@@ -39,6 +39,7 @@ private[spark] class JavaSerializationStream(
    * the stream 'resets' object class descriptions have to be re-written)
    */
   def writeObject[T: ClassTag](t: T): SerializationStream = {
+    //println("writing at javaserializer " + t)
     try {
       objOut.writeObject(t)
     } catch {

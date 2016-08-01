@@ -58,6 +58,7 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
   private var serializationStream: SerializationStream = null
 
   def open() {
+    println("The serializer we are using is " + ser)
     compressionStream = serializerManager.wrapForCompression(blockId, byteOutputStream)
     serializationStream = ser.newInstance().serializeStream(compressionStream)
     initialized = true
@@ -67,6 +68,14 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
     if (!initialized) {
       open()
     }
+    serializationStream.writeObject(value)
+  }
+
+  def write(key: Any, value: Any) {
+    if (!initialized) {
+      open()
+    }
+    serializationStream.writeObject(key)
     serializationStream.writeObject(value)
   }
 

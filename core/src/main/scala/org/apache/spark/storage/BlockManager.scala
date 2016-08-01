@@ -20,12 +20,13 @@ package org.apache.spark.storage
 import java.io._
 import java.nio.ByteBuffer
 
-import scala.collection.mutable.{ArrayBuffer, HashMap}
+import scala.collection.mutable.{ArrayBuffer, HashMap, Queue}
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
+
 
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
@@ -72,6 +73,8 @@ private[spark] class BlockManager(
 
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)
+
+  private var myBuffer : Queue[Any] = null
 
   val diskBlockManager = {
     // Only perform cleanup if an external service is not serving our shuffle files.
@@ -748,6 +751,30 @@ private[spark] class BlockManager(
                              tellMaster: Boolean = true): Long = {
     require(bytes != null, "Bytes is null")
     return doPutBytesAndReturnSize(blockId, bytes, level, implicitly[ClassTag[T]], tellMaster)
+  }
+
+
+  def putMyBuffer[T: ClassTag](buffer: Queue[Any]) : Boolean = {
+    myBuffer = buffer
+    return true
+  }
+
+  def getMyIterator() : NextIterator[(Any, Any)] = {
+    return new NextIterator[(Any, Any)] {
+      override protected def getNext() = {
+        try {
+          (myBuffer.dequeue(), myBuffer.dequeue())
+        } catch {
+          case eof: Exception =>
+            finished = true
+            null
+        }
+      }
+
+      override protected def close() {
+        // do nothing
+      }
+    }
   }
 
   private def doPutBytesAndReturnSize[T](

@@ -74,7 +74,7 @@ private[spark] class SerializerManager(defaultSerializer: Serializer, conf: Spar
 
   def getSerializer(ct: ClassTag[_]): Serializer = {
     if (canUseKryo(ct)) {
-      defaultSerializer
+      kryoSerializer
     } else {
       defaultSerializer
     }
@@ -85,7 +85,7 @@ private[spark] class SerializerManager(defaultSerializer: Serializer, conf: Spar
    */
   def getSerializer(keyClassTag: ClassTag[_], valueClassTag: ClassTag[_]): Serializer = {
     if (canUseKryo(keyClassTag) && canUseKryo(valueClassTag)) {
-      defaultSerializer
+      kryoSerializer
     } else {
       defaultSerializer
     }

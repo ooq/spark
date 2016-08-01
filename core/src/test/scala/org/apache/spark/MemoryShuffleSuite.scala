@@ -57,7 +57,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
 
   test("memory shuffle simple test") {
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
-      .set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
+      //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
     sc = new SparkContext("local", "test", myConf)
     val pairs = sc.parallelize(Array((1, 1), (1, 2), (1, 3), (2, 1)), 1)
     //val pairs = sc.parallelize(Array((1, 1), (2, 1)), 1)
@@ -70,20 +70,48 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
     assert(valuesFor2.toList.sorted === List(1))
   }
 
+  test("memory shuffle 2nd test") {
+    val N = 1 << 3
+    val myConf = conf.clone().set("spark.shuffle.compress", "false")
+      .set("spark.shuffle.manager", "memory")
+     .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+    sc = new SparkContext("local", "test", myConf)
+    var i = 0
+    while (i < 1) {
+      val pairs = sc.parallelize((1 to N).map(x => (x & 1, x)), 1)
+      val start = System.nanoTime()
+      val groups = pairs.groupByKey(1).count()
+      val end = System.nanoTime()
+      assert(groups == 2)
+      i += 1
+    }
+  }
+
   test("memory shuffle benchmark") {
-    val N = 1 << 22
+    val N = 1 << 20
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
          .set("spark.shuffle.manager", "memory")
       //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
     sc = new SparkContext("local", "test", myConf)
     var i = 0
+    val largeString =
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf" +
+      "gdfgsdfgsdgfdfsgsdgdsgsdfgsgdfgdsfgdafddfssdfsdf"
     while (i < 1) {
-      val pairs = sc.parallelize((1 to N).map(x => (x & 7, x)), 1)
+      val pairs = sc.parallelize((1 to N).map(x => (x & 7, largeString)), 1)
       val start = System.nanoTime()
       val groups = pairs.groupByKey(1).count()
       val end = System.nanoTime()
       println("time spent is " + (end - start) / 1000000 + " ms.")
-      //assert(groups == 8)
+      assert(groups == 8)
       i += 1
     }
   }
@@ -105,5 +133,11 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
       i += 1
     }
   }
+
+  // create a test that compares performance (dataframe)
+
+
+
+
 
 }
