@@ -20,7 +20,7 @@ package org.apache.spark.shuffle
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.SerializerManager
-import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
+import org.apache.spark.storage.{BlockManager, MemoryShuffleBlockIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
@@ -42,8 +42,16 @@ private[spark] class NoCopyShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
+    val memoryBlockFetcherItr = new MemoryShuffleBlockIterator(
+      context,
+      blockManager,
+      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
+    )
+
     // Create a key/value iterator for each stream
-    val recordIter = blockManager.getMyIterator()
+    val recordIter = memoryBlockFetcherItr.flatMap { case (blockId, iter) =>
+      iter
+    }
 
     // Update the context task metrics for each record read.
     val readMetrics = context.taskMetrics.createTempShuffleReadMetrics()

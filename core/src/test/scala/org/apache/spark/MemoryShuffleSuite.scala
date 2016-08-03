@@ -60,7 +60,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
       .set("spark.shuffle.manager", "nocopy")
       //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
     sc = new SparkContext("local", "test", myConf)
-    val pairs = sc.parallelize(Array((1, 1), (1, 2), (1, 3), (2, 1)), 1)
+    val pairs = sc.parallelize(Array((1, 1), (1, 2), (1, 3), (2, 1)), 2)
     //val pairs = sc.parallelize(Array((1, 1), (2, 1)), 1)
     //val pairs = sc.parallelize(Array((1, 1)), 1)
     val groups = pairs.groupByKey(1).collect()

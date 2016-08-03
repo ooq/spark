@@ -74,7 +74,7 @@ private[spark] class UnserializedCopyObjectWriter(manager: BlockManager,
     if (initialized) {
       assert(saveToBlockManager)
       if (saveToBlockManager) {
-        blockManager.putMyBuffer(buffer)
+        blockManager.putMyBuffer(blockId, buffer)
         return 1
       }
     }

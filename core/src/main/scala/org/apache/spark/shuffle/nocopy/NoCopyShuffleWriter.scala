@@ -34,9 +34,9 @@ private[spark] class NoCopyShuffleWriter[K, V](
   // Create a different writer for each output bucket.
   val blockManager = SparkEnv.get.blockManager
   val numBuckets = dep.partitioner.numPartitions
-  val shuffleData = Array.tabulate[UnserializedCopyObjectWriter](numBuckets) {
+  val shuffleData = Array.tabulate[UnserializedObjectWriter](numBuckets) {
     bucketId =>
-      new UnserializedCopyObjectWriter(blockManager, dep, mapId, bucketId)
+      new UnserializedObjectWriter(blockManager, dep, mapId, bucketId)
   }
 
   val shuffleWriteMetrics = context.taskMetrics().shuffleWriteMetrics

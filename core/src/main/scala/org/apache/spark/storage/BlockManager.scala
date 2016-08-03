@@ -19,6 +19,7 @@ package org.apache.spark.storage
 
 import java.io._
 import java.nio.ByteBuffer
+import java.util.LinkedHashMap
 
 import scala.collection.mutable.{ArrayBuffer, HashMap, Queue}
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -26,8 +27,6 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
-
-
 import org.apache.spark._
 import org.apache.spark.executor.{DataReadMethod, ShuffleWriteMetrics}
 import org.apache.spark.internal.Logging
@@ -74,7 +73,7 @@ private[spark] class BlockManager(
   private[spark] val externalShuffleServiceEnabled =
     conf.getBoolean("spark.shuffle.service.enabled", false)
 
-  private var myBuffer : Queue[Any] = null
+  private val queueMap = new LinkedHashMap[BlockId, Queue[Any]](32, 0.75f, true)
 
   val diskBlockManager = {
     // Only perform cleanup if an external service is not serving our shuffle files.
@@ -753,13 +752,16 @@ private[spark] class BlockManager(
     return doPutBytesAndReturnSize(blockId, bytes, level, implicitly[ClassTag[T]], tellMaster)
   }
 
-  def putMyBuffer[T: ClassTag](buffer: Queue[Any]) : Boolean = {
-    myBuffer = buffer
+  def putMyBuffer[T: ClassTag](blockId: BlockId, buffer: Queue[Any]) : Boolean = {
+    queueMap.synchronized {
+      queueMap.put(blockId, buffer)
+    }
     return true
   }
 
-  def getMyIterator() : NextIterator[(Any, Any)] = {
+  def getMyIterator(blockId: BlockId) : NextIterator[(Any, Any)] = {
     return new NextIterator[(Any, Any)] {
+      private val myBuffer = queueMap.synchronized {queueMap.get(blockId)}
       override protected def getNext() = {
         try {
           val key = myBuffer.dequeue()
@@ -773,6 +775,7 @@ private[spark] class BlockManager(
       }
 
       override protected def close() {
+        queueMap.remove(blockId)
         // do nothing
       }
     }
