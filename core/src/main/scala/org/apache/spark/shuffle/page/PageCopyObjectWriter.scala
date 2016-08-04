@@ -57,6 +57,8 @@ private[spark] class PageCopyObjectWriter(manager: BlockManager,
     if (!initialized) {
       open()
     }
+    println("in PageCopyObjectWriter " + key + " " + value)
+    new Throwable().printStackTrace()
     buffer.enqueue(key)
     buffer.enqueue(value)
   }
