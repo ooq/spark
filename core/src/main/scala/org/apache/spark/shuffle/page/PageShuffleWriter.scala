@@ -15,15 +15,15 @@
  * limitations under the License.
  */
 
-package org.apache.spark.shuffle.nocopy
+package org.apache.spark.shuffle.page
 
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.scheduler.MapStatus
-import org.apache.spark.shuffle.{BaseShuffleHandle, NoCopyShuffleBlockResolver, ShuffleWriter}
+import org.apache.spark.shuffle.{BaseShuffleHandle, PageShuffleBlockResolver, ShuffleWriter}
 
 /** A ShuffleWriter that stores all shuffle data in memory using the block manager. */
-private[spark] class NoCopyShuffleWriter[K, V](
-                                                shuffleBlockResolver: NoCopyShuffleBlockResolver,
+private[spark] class PageShuffleWriter[K, V](
+                                                shuffleBlockResolver: PageShuffleBlockResolver,
                                                 handle: BaseShuffleHandle[K, V, _],
                                                 mapId: Int,
                                                 context: TaskContext)
@@ -34,9 +34,9 @@ private[spark] class NoCopyShuffleWriter[K, V](
   // Create a different writer for each output bucket.
   val blockManager = SparkEnv.get.blockManager
   val numBuckets = dep.partitioner.numPartitions
-  val shuffleData = Array.tabulate[UnserializedObjectWriter](numBuckets) {
+  val shuffleData = Array.tabulate[PageCopyObjectWriter](numBuckets) {
     bucketId =>
-      new UnserializedObjectWriter(blockManager, dep, mapId, bucketId)
+      new PageCopyObjectWriter(blockManager, dep, mapId, bucketId)
   }
 
   val shuffleWriteMetrics = context.taskMetrics().shuffleWriteMetrics

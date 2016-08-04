@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.shuffle.nocopy
+package org.apache.spark.shuffle.page
 
 import java.io.{ByteArrayOutputStream, OutputStream}
 import java.nio.ByteBuffer
@@ -29,10 +29,10 @@ import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockManager, ShuffleBlockId, StorageLevel}
 
 /** Serializes and optionally compresses data into an in-memory byte stream. */
-private[spark] class UnserializedObjectWriter(manager: BlockManager,
-                                            dep: ShuffleDependency[_, _, _],
-                                            partitionId: Int,
-                                            bucketId: Int) {
+private[spark] class PageCopyObjectWriter(manager: BlockManager,
+                                              dep: ShuffleDependency[_, _, _],
+                                              partitionId: Int,
+                                              bucketId: Int) {
 
   private val blockManager = manager
   private val ser = dep.serializer

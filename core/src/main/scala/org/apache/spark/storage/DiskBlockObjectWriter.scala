@@ -181,6 +181,14 @@ private[spark] class DiskBlockObjectWriter(
       open()
     }
 
+    /*
+    println("In DiskBlockObjectWriter, types are "
+      + key.getClass().getName() +  " "
+      + value.getClass().getName())
+    println("In DiskBlockObjectWriter, values are "
+      + key +  " "
+      + value)
+    */
     objOut.writeKey(key)
     objOut.writeValue(value)
     recordWritten()

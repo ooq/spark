@@ -21,6 +21,7 @@ import java.util.HashMap
 
 import org.apache.spark.SparkConf
 import org.apache.spark.memory.{StaticMemoryManager, TaskMemoryManager}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.execution.joins.LongToUnsafeRowMap
 import org.apache.spark.sql.execution.vectorized.AggregateHashMap
@@ -129,6 +130,26 @@ class AggregateBenchmark extends BenchmarkBase {
     codegen = T hashmap = T                        897 /  971         93.5          10.7       7.4X
     */
   }
+
+  val sparkSessionNoCopy = SparkSession.builder
+    .master("local[1]")
+    .appName("microbenchmark")
+    .config("spark.sql.shuffle.partitions", 1)
+    .config("spark.shuffle.manager", "nocopy")
+    .config("spark.sql.autoBroadcastJoinThreshold", 1)
+    .config("spark.sql.codegen.wholeStage", "true")
+    .config("spark.sql.codegen.aggregate.map.columns.max", "100")
+    .getOrCreate()
+
+  test("shuffle test") {
+    // val N = 20 << 22
+    val N = 1 << 22
+    // sparkSessionNoCopy.range(N).selectExpr("(id & 3) as k").repartition(1)
+    sparkSessionNoCopy.range(N).selectExpr("(id & 0) as k").repartition(1).distinct().show()
+    // sparkSession.range(N).selectExpr("(id & 65535) as k").groupBy("k").sum().show()
+    while(true) {}
+  }
+
 
   ignore("aggregate with randomized keys") {
     val N = 20 << 22

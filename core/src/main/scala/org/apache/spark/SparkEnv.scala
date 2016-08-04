@@ -67,6 +67,7 @@ class SparkEnv (
     val outputCommitCoordinator: OutputCommitCoordinator,
     val conf: SparkConf) extends Logging {
 
+  println("Shuffle manager is " + shuffleManager.getClass().getName())
   private[spark] var isStopped = false
   private val pythonWorkers = mutable.HashMap[(String, Map[String, String]), PythonWorkerFactory]()
 
@@ -299,7 +300,8 @@ object SparkEnv extends Logging {
       "sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName,
       "tungsten-sort" -> classOf[org.apache.spark.shuffle.sort.SortShuffleManager].getName,
       "memory" -> classOf[org.apache.spark.shuffle.memory.MemoryShuffleManager].getName,
-      "nocopy" -> classOf[org.apache.spark.shuffle.nocopy.NoCopyShuffleManager].getName)
+      "nocopy" -> classOf[org.apache.spark.shuffle.nocopy.NoCopyShuffleManager].getName,
+      "page" -> classOf[org.apache.spark.shuffle.page.PageShuffleManager].getName)
     val shuffleMgrName = conf.get("spark.shuffle.manager", "sort")
     val shuffleMgrClass = shortShuffleMgrNames.getOrElse(shuffleMgrName.toLowerCase, shuffleMgrName)
     val shuffleManager = instantiateClass[ShuffleManager](shuffleMgrClass)

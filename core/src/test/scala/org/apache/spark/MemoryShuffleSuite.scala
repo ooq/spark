@@ -20,11 +20,9 @@ package org.apache.spark
 import java.io.File
 
 import scala.collection.JavaConverters._
-
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.scalatest.BeforeAndAfterAll
-
 import org.apache.spark.rdd.ShuffledRDD
 import org.apache.spark.serializer.{JavaSerializer, KryoSerializer}
 import org.apache.spark.shuffle.sort.SortShuffleManager
@@ -71,6 +69,18 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
     assert(valuesFor2.toList.sorted === List(1))
   }
 
+  test("memory shuffle results test") {
+    val myConf = conf.clone().set("spark.shuffle.compress", "false")
+      .set("spark.shuffle.manager", "page")
+    //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
+    sc = new SparkContext("local", "test", myConf)
+    val pairs = sc.parallelize(Array((0, 4), (1, 5), (2, 6), (3, 7)), 1)
+    //val pairs = sc.parallelize(Array((1, 1), (2, 1)), 1)
+    //val pairs = sc.parallelize(Array((1, 1)), 1)
+    val groups = pairs.groupByKey(1).collect()
+  }
+
+
   test("memory shuffle 2nd test") {
     val N = 1 << 3
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
@@ -91,7 +101,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
   test("memory shuffle benchmark") {
     val N = 1 << 20
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
-         .set("spark.shuffle.manager", "nocopy")
+         .set("spark.shuffle.manager", "sort")
       //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
     sc = new SparkContext("local", "test", myConf)
     var i = 0
@@ -115,6 +125,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
       assert(groups == 8)
       i += 1
     }
+    while (true) {}
   }
 
   test("memory shuffle benchmark, primitive types") {
@@ -153,11 +164,5 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
       i += 1
     }
   }
-
   // create a test that compares performance (dataframe)
-
-
-
-
-
 }

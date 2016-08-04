@@ -53,6 +53,12 @@ private[spark] trait WritablePartitionedPairCollection[K, V] {
       private[this] var cur = if (it.hasNext) it.next() else null
 
       def writeNext(writer: DiskBlockObjectWriter): Unit = {
+        println("In WritablePartitionedPairCollection, types are "
+          + cur._1._2.getClass().getName() +  " "
+          + cur._2.getClass().getName())
+        println("In WritablePartitionedPairCollection, values are "
+          + cur._1._2 +  " "
+          + cur._2)
         writer.write(cur._1._2, cur._2)
         cur = if (it.hasNext) it.next() else null
       }
