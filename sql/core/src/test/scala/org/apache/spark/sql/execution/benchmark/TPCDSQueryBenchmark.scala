@@ -100,7 +100,7 @@ object TPCDSQueryBenchmark {
       benchmark.run()
       */
       //val modes = List("skip", "vectorized", "rowbased")
-      val modes = List("skip", "vectorized", "rowbased")
+      val modes = List("skip")
       val results = modes.map(mode => {
         println("name = " + name + " mode = " + mode)
         mode match {
@@ -114,7 +114,7 @@ object TPCDSQueryBenchmark {
         }
         var j = 0
         var minTime: Long = 10000000
-        while (j < 10) {
+        while (j < 3) {
           System.gc()
           val timeStart = System.nanoTime
           spark.sql(queryString).collect()
@@ -126,7 +126,7 @@ object TPCDSQueryBenchmark {
         }
         minTime
       })
-      // printf("%20s %20s %20s %20s\n", name, results(0), results(1), results(2))
+      printf("%20s %20s %20s %20s\n", name, results(0), results(1), results(2))
 
     }
   }
@@ -171,6 +171,6 @@ object TPCDSQueryBenchmark {
     // dataLocation below needs to be set to the location where the generated data is stored.
     val dataLocation = "/Users/qifan/Data/tpcds-07-19-D/"
 
-    tpcdsAll(dataLocation, queries = selectedQueries)
+    tpcdsAll(dataLocation, queries = Seq("qsSMax"))
   }
 }

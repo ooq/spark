@@ -414,6 +414,7 @@ public abstract class ColumnVector implements AutoCloseable {
    */
   public abstract int getInt(int rowId);
 
+  public abstract int getDictId(int rowId);
   /**
    * Sets the value at rowId to `value`.
    */

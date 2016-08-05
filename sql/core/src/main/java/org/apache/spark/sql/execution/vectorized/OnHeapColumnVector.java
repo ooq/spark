@@ -230,10 +230,16 @@ public final class OnHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return intData[rowId];
     } else {
-      return dictionary.decodeToInt(dictionaryIds.getInt(rowId));
+      return dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
     }
   }
 
+
+  @Override
+  public int getDictId(int rowId) {
+    assert (dictionary == null);
+    return intData[rowId];
+  }
   //
   // APIs dealing with Longs
   //

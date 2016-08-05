@@ -161,10 +161,15 @@ public final class OffHeapColumnVector extends ColumnVector {
     if (dictionary == null) {
       return Platform.getByte(null, data + rowId);
     } else {
-      return (byte) dictionary.decodeToInt(dictionaryIds.getInt(rowId));
+      return (byte) dictionary.decodeToInt(dictionaryIds.getDictId(rowId));
     }
   }
 
+  @Override
+  public int getDictId(int rowId) {
+    assert (dictionary == null);
+    return Platform.getByte(null, data + rowId);
+  }
   //
   // APIs dealing with shorts
   //
