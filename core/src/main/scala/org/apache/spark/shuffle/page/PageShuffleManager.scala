@@ -19,7 +19,7 @@ package org.apache.spark.shuffle.page
 
 import java.util.concurrent.ConcurrentHashMap
 
-import org.apache.spark.{ShuffleDependency, SparkConf, TaskContext}
+import org.apache.spark.{ShuffleDependency, SparkConf, SparkEnv, TaskContext}
 import org.apache.spark.shuffle._
 
 
@@ -31,7 +31,7 @@ private[spark] class PageShuffleManager(conf: SparkConf) extends ShuffleManager 
                                          shuffleId: Int,
                                          numMaps: Int,
                                          dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
-    new BaseShuffleHandle(shuffleId, numMaps, dependency)
+    new PageShuffleHandle(shuffleId, numMaps, dependency)
   }
 
   override def getReader[K, C](
@@ -45,8 +45,16 @@ private[spark] class PageShuffleManager(conf: SparkConf) extends ShuffleManager 
 
   override def getWriter[K, V](handle: ShuffleHandle, mapId: Int,
                                context: TaskContext): ShuffleWriter[K, V] = {
+    val env = SparkEnv.get
     new PageShuffleWriter(
-      shuffleBlockResolver, handle.asInstanceOf[BaseShuffleHandle[K, V, _]], mapId, context)
+      env.blockManager,
+      shuffleBlockResolver,
+      context.taskMemoryManager(),
+      handle,
+      mapId,
+      context,
+      env.conf)
+
   }
 
   override def unregisterShuffle(shuffleId: Int): Boolean = {
@@ -56,4 +64,11 @@ private[spark] class PageShuffleManager(conf: SparkConf) extends ShuffleManager 
   override def stop(): Unit = {
     shuffleBlockResolver.stop()
   }
+}
+
+private[spark] class PageShuffleHandle[K, V](
+                                                    shuffleId: Int,
+                                                    numMaps: Int,
+                                                    dependency: ShuffleDependency[K, V, V])
+  extends BaseShuffleHandle(shuffleId, numMaps, dependency) {
 }

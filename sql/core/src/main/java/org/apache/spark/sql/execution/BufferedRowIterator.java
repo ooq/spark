@@ -46,8 +46,8 @@ public abstract class BufferedRowIterator {
   }
 
   public InternalRow next() {
-    System.out.println("next here");
-    new Throwable().printStackTrace();
+    //System.out.println("next here");
+    //new Throwable().printStackTrace();
     return currentRows.remove();
   }
 

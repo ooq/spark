@@ -39,8 +39,10 @@ import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.rpc.RpcEnv
 import org.apache.spark.serializer.{SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShuffleManager
+// import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.storage.memory._
 import org.apache.spark.unsafe.Platform
+import org.apache.spark.unsafe.memory.MemoryBlock
 import org.apache.spark.util._
 import org.apache.spark.util.io.ChunkedByteBuffer
 
@@ -74,6 +76,7 @@ private[spark] class BlockManager(
     conf.getBoolean("spark.shuffle.service.enabled", false)
 
   private val queueMap = new LinkedHashMap[BlockId, Queue[Any]](32, 0.75f, true)
+  private val pageMap = new LinkedHashMap[BlockId, Queue[MemoryBlock]](32, 0.75f, true)
 
   val diskBlockManager = {
     // Only perform cleanup if an external service is not serving our shuffle files.
@@ -767,6 +770,7 @@ private[spark] class BlockManager(
         try {
           val key = myBuffer.dequeue()
           val value = myBuffer.dequeue()
+          //println("key " + key + " value " + value)
           (key, value)
         } catch {
           case eof: Exception =>
@@ -777,6 +781,57 @@ private[spark] class BlockManager(
 
       override protected def close() {
         queueMap.remove(blockId)
+        // do nothing
+      }
+    }
+  }
+
+  def putMyPage[T: ClassTag](blockId: BlockId, buffer: Queue[MemoryBlock]) : Boolean = {
+    pageMap.synchronized {
+      pageMap.put(blockId, buffer)
+    }
+    return true
+  }
+
+  def getMyPageIterator(blockId: BlockId) : NextIterator[(Any, Any)] = {
+    return new NextIterator[(Any, Any)] {
+      private val myPages = pageMap.synchronized {pageMap.get(blockId)}
+      // val rowCopy: UnsafeRow = new UnsafeRow(3)
+      private var currentPage: MemoryBlock = null
+      private var currentNum = 0
+      private var currentCursor = 0
+      private var currentBase: Object = null
+      private var currentOff: Long = 0
+
+
+      private def getNextRow() = {
+        if (currentPage == null || currentNum == 0) {
+          currentPage = myPages.dequeue()
+          currentBase = currentPage.getBaseObject
+          currentOff = currentPage.getBaseOffset
+          currentNum = Platform.getInt(currentBase, currentOff)
+          currentCursor = 4
+        }
+
+        val l = Platform.getInt(currentBase, currentOff + currentCursor)
+        // rowCopy.pointTo(currentBase, currentOff + currentCursor, l - 4)
+        currentNum -= 1
+        currentCursor += l
+      }
+
+      override protected def getNext() = {
+        try {
+          getNextRow()
+          (0, 0)
+        } catch {
+          case eof: Exception =>
+            finished = true
+            null
+        }
+      }
+
+      override protected def close() {
+        pageMap.remove(blockId)
         // do nothing
       }
     }

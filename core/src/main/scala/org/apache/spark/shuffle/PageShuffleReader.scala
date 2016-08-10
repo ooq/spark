@@ -20,7 +20,7 @@ package org.apache.spark.shuffle
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.SerializerManager
-import org.apache.spark.storage.{BlockManager, MemoryShuffleBlockIterator}
+import org.apache.spark.storage.{BlockManager, PageShuffleBlockIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
@@ -42,7 +42,7 @@ private[spark] class PageShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
-    val memoryBlockFetcherItr = new MemoryShuffleBlockIterator(
+    val memoryBlockFetcherItr = new PageShuffleBlockIterator(
       context,
       blockManager,
       mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)

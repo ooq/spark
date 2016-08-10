@@ -71,7 +71,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
 
   test("memory shuffle results test") {
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
-      .set("spark.shuffle.manager", "page")
+      .set("spark.shuffle.manager", "nocopy")
     //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
     sc = new SparkContext("local", "test", myConf)
     val pairs = sc.parallelize(Array((0, 4), (1, 5), (2, 6), (3, 7)), 1)
@@ -101,7 +101,7 @@ class MemoryShuffleSuite extends ShuffleSuite with BeforeAndAfterAll {
   test("memory shuffle benchmark") {
     val N = 1 << 20
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
-         .set("spark.shuffle.manager", "sort")
+         .set("spark.shuffle.manager", "nocopy")
       //.set("spark.serializer", "org.apache.spark.serializer.JavaSerializer")
     sc = new SparkContext("local", "test", myConf)
     var i = 0

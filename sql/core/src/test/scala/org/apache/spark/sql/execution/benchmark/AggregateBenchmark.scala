@@ -135,20 +135,28 @@ class AggregateBenchmark extends BenchmarkBase {
     .master("local[1]")
     .appName("microbenchmark")
     .config("spark.sql.shuffle.partitions", 1)
-    .config("spark.shuffle.manager", "page")
+    .config("spark.shuffle.manager", "sort")
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
       .config("spark.default.parallelism", 2)
+      .config("spark.shuffle.sort.bypassMergeThreshold", -1)
     .getOrCreate()
 
-  test("shuffle test") {
-    // val N = 20 << 22
-    val N = 15
+  ignore("shuffle benchmark test") {
+     val N = 1 << 20
+    //val N = 15
     // sparkSessionNoCopy.range(N).selectExpr("(id & 3) as k").repartition(1)
     sparkSessionNoCopy.range(N).selectExpr("(id & 15) as k").repartition(4).distinct().show()
     // sparkSession.range(N).selectExpr("(id & 65535) as k").groupBy("k").sum().show()
-    while(true) {}
+  }
+
+  test("shuffle unit test") {
+    val N = 15
+    // sparkSessionNoCopy.range(N).selectExpr("(id & 3) as k").repartition(1)
+    sparkSessionNoCopy.range(N).selectExpr("(id & 15) as k").repartition(4).distinct().explain()
+    sparkSessionNoCopy.range(N).selectExpr("(id & 15) as k").repartition(4).distinct().show()
+    // sparkSession.range(N).selectExpr("(id & 65535) as k").groupBy("k").sum().show()
   }
 
 
