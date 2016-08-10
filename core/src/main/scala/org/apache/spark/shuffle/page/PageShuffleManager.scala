@@ -31,7 +31,7 @@ private[spark] class PageShuffleManager(conf: SparkConf) extends ShuffleManager 
                                          shuffleId: Int,
                                          numMaps: Int,
                                          dependency: ShuffleDependency[K, V, C]): ShuffleHandle = {
-    new PageShuffleHandle(shuffleId, numMaps, dependency)
+    new PageShuffleHandle(shuffleId, numMaps, dependency.asInstanceOf[ShuffleDependency[K, V, V]])
   }
 
   override def getReader[K, C](
@@ -46,15 +46,17 @@ private[spark] class PageShuffleManager(conf: SparkConf) extends ShuffleManager 
   override def getWriter[K, V](handle: ShuffleHandle, mapId: Int,
                                context: TaskContext): ShuffleWriter[K, V] = {
     val env = SparkEnv.get
-    new PageShuffleWriter(
-      env.blockManager,
-      shuffleBlockResolver,
-      context.taskMemoryManager(),
-      handle,
-      mapId,
-      context,
-      env.conf)
-
+    handle match {
+      case pageShuffleHandle: PageShuffleHandle[K@unchecked, V@unchecked] =>
+        new PageShuffleWriter(
+          env.blockManager,
+          shuffleBlockResolver,
+          context.taskMemoryManager(),
+          pageShuffleHandle,
+          mapId,
+          context,
+          env.conf)
+    }
   }
 
   override def unregisterShuffle(shuffleId: Int): Boolean = {
@@ -67,8 +69,8 @@ private[spark] class PageShuffleManager(conf: SparkConf) extends ShuffleManager 
 }
 
 private[spark] class PageShuffleHandle[K, V](
-                                                    shuffleId: Int,
-                                                    numMaps: Int,
-                                                    dependency: ShuffleDependency[K, V, V])
+                                  shuffleId: Int,
+                                  numMaps: Int,
+                                  dependency: ShuffleDependency[K, V, V])
   extends BaseShuffleHandle(shuffleId, numMaps, dependency) {
 }

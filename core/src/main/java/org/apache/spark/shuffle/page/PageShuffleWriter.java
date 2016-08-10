@@ -77,7 +77,6 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private final int initialSortBufferSize;
 
   @Nullable private MapStatus mapStatus;
-  @Nullable private ShuffleExternalSorter sorter;
   private long peakMemoryUsedBytes = 0;
 
   /** Subclass of ByteArrayOutputStream that exposes `buf` directly. */
@@ -132,21 +131,13 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   private void open() throws IOException {
-    assert (sorter == null);
-    sorter = new ShuffleExternalSorter(
-            memoryManager,
-            blockManager,
-            taskContext,
-            initialSortBufferSize,
-            partitioner.numPartitions(),
-            sparkConf,
-            writeMetrics);
     serBuffer = new MyByteArrayOutputStream(1024 * 1024);
     serOutputStream = serializer.serializeStream(serBuffer);
   }
 
   @VisibleForTesting
   void closeAndWriteOutput() throws IOException {
+    /*
     assert(sorter != null);
     updatePeakMemoryUsed();
     serBuffer = null;
@@ -167,11 +158,11 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     }
     shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+    */
   }
 
   @VisibleForTesting
   void insertRecordIntoSorter(Product2<K, V> record) throws IOException {
-    assert(sorter != null);
     final K key = record._1();
     final int partitionId = partitioner.getPartition(key);
     serBuffer.reset();
@@ -182,14 +173,14 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final int serializedRecordSize = serBuffer.size();
     assert (serializedRecordSize > 0);
 
-    sorter.insertRecord(
-            serBuffer.getBuf(), Platform.BYTE_ARRAY_OFFSET, serializedRecordSize, partitionId);
+    //sorter.insertRecord(
+    //        serBuffer.getBuf(), Platform.BYTE_ARRAY_OFFSET, serializedRecordSize, partitionId);
   }
 
   @Override
   public Option<MapStatus> stop(boolean success) {
     try {
-      taskContext.taskMetrics().incPeakExecutionMemory(getPeakMemoryUsedBytes());
+      //taskContext.taskMetrics().incPeakExecutionMemory(getPeakMemoryUsedBytes());
 
       if (stopping) {
         return Option.apply(null);
@@ -202,16 +193,14 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           return Option.apply(mapStatus);
         } else {
           // The map task failed, so delete our output data.
-          shuffleBlockResolver.removeDataByMap(shuffleId, mapId);
+          // shuffleBlockResolver.removeDataByMap(shuffleId, mapId);
           return Option.apply(null);
         }
       }
     } finally {
-      if (sorter != null) {
         // If sorter is non-null, then this implies that we called stop() in response to an error,
         // so we need to clean up memory and spill files created by the sorter
-        sorter.cleanupResources();
-      }
+        //sorter.cleanupResources();
     }
   }
 }

@@ -89,6 +89,7 @@ private[spark] class PageCopyObjectWriter(
     // 4 byte for number of records
     // 4 byte for size = l
     // UnsafeRow of length l
+    /*
     val recordLength: Integer = value.getSizeInBytes + 4
     if (currentPage == null || currentPage.size - pageCursor < recordLength) {
       if (!acquireNewPage(recordLength + 4L)) {
@@ -100,7 +101,9 @@ private[spark] class PageCopyObjectWriter(
       base, baseOff, value.getSizeInBytes)
     pageCursor += recordLength
     Platform.putInt(base, baseOff, Platform.getInt(base, baseOff) + 1)
+    */
   }
+
 
   // true if succeed, otherwise return false
   def close(saveToBlockManager: Boolean): Long = {
