@@ -22,6 +22,7 @@ import java.util.Random
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.serializer.Serializer
+import org.apache.spark.distributor.Distributor
 import org.apache.spark.shuffle.sort.SortShuffleManager
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.errors._
@@ -61,6 +62,9 @@ case class ShuffleExchange(
   private val serializer: Serializer =
     new UnsafeRowSerializer(child.output.size, longMetric("dataSize"))
 
+  private val distributor: Distributor =
+    new PageShuffleDistributor(child.output.size, longMetric("dataSize"))
+
   override protected def doPrepare(): Unit = {
     // If an ExchangeCoordinator is needed, we register this Exchange operator
     // to the coordinator when we do prepare. It is important to make sure
@@ -83,7 +87,7 @@ case class ShuffleExchange(
    */
   private[sql] def prepareShuffleDependency(): ShuffleDependency[Int, InternalRow, InternalRow] = {
     ShuffleExchange.prepareShuffleDependency(
-      child.execute(), child.output, newPartitioning, serializer)
+      child.execute(), child.output, newPartitioning, serializer, distributor)
   }
 
   /**
@@ -198,7 +202,8 @@ object ShuffleExchange {
       rdd: RDD[InternalRow],
       outputAttributes: Seq[Attribute],
       newPartitioning: Partitioning,
-      serializer: Serializer): ShuffleDependency[Int, InternalRow, InternalRow] = {
+      serializer: Serializer,
+      distributor: Distributor = null): ShuffleDependency[Int, InternalRow, InternalRow] = {
     val part: Partitioner = newPartitioning match {
       case RoundRobinPartitioning(numPartitions) => new HashPartitioner(numPartitions)
       case HashPartitioning(_, n) =>
@@ -262,8 +267,11 @@ object ShuffleExchange {
       new ShuffleDependency[Int, InternalRow, InternalRow](
         rddWithPartitionIds,
         new PartitionIdPassthrough(part.numPartitions),
-        serializer)
-
+        serializer,
+        None,
+        None,
+        false,
+        distributor)
     dependency
   }
 }

@@ -21,6 +21,7 @@ import scala.reflect.ClassTag
 
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.rdd.RDD
+import org.apache.spark.distributor.Distributor
 import org.apache.spark.serializer.Serializer
 import org.apache.spark.shuffle.ShuffleHandle
 
@@ -73,7 +74,8 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
     val serializer: Serializer = SparkEnv.get.serializer,
     val keyOrdering: Option[Ordering[K]] = None,
     val aggregator: Option[Aggregator[K, V, C]] = None,
-    val mapSideCombine: Boolean = false)
+    val mapSideCombine: Boolean = false,
+    val distributor: Distributor = null)
   extends Dependency[Product2[K, V]] {
 
   override def rdd: RDD[Product2[K, V]] = _rdd.asInstanceOf[RDD[Product2[K, V]]]
