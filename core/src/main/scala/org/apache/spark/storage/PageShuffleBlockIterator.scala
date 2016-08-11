@@ -22,6 +22,8 @@ import scala.collection.mutable.Queue
 import org.apache.spark.internal.Logging
 import org.apache.spark.util.NextIterator
 import org.apache.spark.TaskContext
+import org.apache.spark.unsafe.memory.MemoryBlock
+
 
 private[spark]
 final class PageShuffleBlockIterator(
@@ -53,9 +55,9 @@ final class PageShuffleBlockIterator(
     logInfo(s"Getting $numBlocksToFetch non-empty blocks out of $totalBlocks blocks")
   }
 
-  override def next(): (BlockId, NextIterator[(Any, Any)]) = {
+  override def next(): (Queue[MemoryBlock]) = {
     numBlocksProcessed += 1
     val blockId = localBlocks.dequeue()
-    (blockId, blockManager.getMyPageIterator(blockId))
+    blockManager.getMyPage(blockId)
   }
 }

@@ -17,12 +17,15 @@
 
 package org.apache.spark.shuffle
 
+import scala.collection.mutable.Queue
+
 import org.apache.spark._
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer.SerializerManager
 import org.apache.spark.storage.{BlockManager, PageShuffleBlockIterator}
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
+import org.apache.spark.unsafe.memory.MemoryBlock
 
 /**
   * Fetches and reads the partitions in range [startPartition, endPartition) from a shuffle by
@@ -42,14 +45,19 @@ private[spark] class PageShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
-    val memoryBlockFetcherItr = new PageShuffleBlockIterator(
+    val pageBlockFetcherItr = new PageShuffleBlockIterator(
       context,
       blockManager,
       mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
     )
 
+    assert(dep.distributor != null)
+
+    val distributor = dep.distributor.newInstance()
+
     // Create a key/value iterator for each stream
-    val recordIter = memoryBlockFetcherItr.flatMap { case (blockId, iter) =>
+    val recordIter = pageBlockFetcherItr.flatMap { case pages =>
+      val itr = distributor.fetchStream(pages).asKeyValueIterator
       iter
     }
 

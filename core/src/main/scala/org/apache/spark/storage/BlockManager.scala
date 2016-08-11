@@ -793,48 +793,8 @@ private[spark] class BlockManager(
     return true
   }
 
-  def getMyPageIterator(blockId: BlockId) : NextIterator[(Any, Any)] = {
-    return new NextIterator[(Any, Any)] {
-      private val myPages = pageMap.synchronized {pageMap.get(blockId)}
-      // val rowCopy: UnsafeRow = new UnsafeRow(3)
-      private var currentPage: MemoryBlock = null
-      private var currentNum = 0
-      private var currentCursor = 0
-      private var currentBase: Object = null
-      private var currentOff: Long = 0
-
-
-      private def getNextRow() = {
-        if (currentPage == null || currentNum == 0) {
-          currentPage = myPages.dequeue()
-          currentBase = currentPage.getBaseObject
-          currentOff = currentPage.getBaseOffset
-          currentNum = Platform.getInt(currentBase, currentOff)
-          currentCursor = 4
-        }
-
-        val l = Platform.getInt(currentBase, currentOff + currentCursor)
-        // rowCopy.pointTo(currentBase, currentOff + currentCursor, l - 4)
-        currentNum -= 1
-        currentCursor += l
-      }
-
-      override protected def getNext() = {
-        try {
-          getNextRow()
-          (0, 0)
-        } catch {
-          case eof: Exception =>
-            finished = true
-            null
-        }
-      }
-
-      override protected def close() {
-        pageMap.remove(blockId)
-        // do nothing
-      }
-    }
+  def getMyPage(blockId: BlockId) : Queue[MemoryBlock] = {
+      pageMap.synchronized {pageMap.get(blockId).asInstanceOf[Queue[MemoryBlock]]}
   }
 
   private def doPutBytesAndReturnSize[T](

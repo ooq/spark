@@ -45,7 +45,7 @@ abstract class Distributor {
 @NotThreadSafe
 abstract class DistributorInstance {
   def distributeStream(taskMemoryManager: TaskMemoryManager): DistributeStream
-  def fetchStream(): FetchStream
+  def fetchStream(pages: Queue[MemoryBlock]): FetchStream
 }
 
 @DeveloperApi
