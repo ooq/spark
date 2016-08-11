@@ -21,11 +21,14 @@ import java.io._
 import java.nio.ByteBuffer
 import javax.annotation.concurrent.NotThreadSafe
 
+import scala.collection.mutable.Queue
 import scala.reflect.ClassTag
 
 import org.apache.spark.SparkEnv
 import org.apache.spark.annotation.{DeveloperApi, Private}
 import org.apache.spark.util.NextIterator
+import org.apache.spark.unsafe.memory.MemoryBlock
+
 
 @DeveloperApi
 abstract class Distributor {
@@ -56,6 +59,7 @@ abstract class DistributeStream {
   def writeValue[T: ClassTag](value: T): DistributeStream = writeObject(value)
   def flush(): Unit
   def close(): Unit
+  def getMemoryPages(): Queue[MemoryBlock]
 
   def writeAll[T: ClassTag](iter: Iterator[T]): DistributeStream = {
     while (iter.hasNext) {

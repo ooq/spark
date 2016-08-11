@@ -37,6 +37,10 @@ import org.slf4j.LoggerFactory;
 
 import org.apache.spark.*;
 import org.apache.spark.annotation.Private;
+import org.apache.spark.distributor.DistributeStream;
+import org.apache.spark.distributor.FetchStream;
+import org.apache.spark.distributor.Distributor;
+import org.apache.spark.distributor.DistributorInstance;
 import org.apache.spark.executor.ShuffleWriteMetrics;
 import org.apache.spark.io.CompressionCodec;
 import org.apache.spark.io.CompressionCodec$;
@@ -52,6 +56,8 @@ import org.apache.spark.storage.BlockManager;
 import org.apache.spark.storage.TimeTrackingOutputStream;
 import org.apache.spark.unsafe.Platform;
 import org.apache.spark.util.Utils;
+import org.apache.spark.storage.ShuffleBlockId;
+
 
 @Private
 public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
@@ -60,13 +66,11 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   private static final ClassTag<Object> OBJECT_CLASS_TAG = ClassTag$.MODULE$.Object();
 
-  @VisibleForTesting
-  static final int DEFAULT_INITIAL_SORT_BUFFER_SIZE = 4096;
-
   private final BlockManager blockManager;
   private final PageShuffleBlockResolver shuffleBlockResolver;
   private final TaskMemoryManager memoryManager;
   private final SerializerInstance serializer;
+  private final DistributorInstance distributor;
   private final Partitioner partitioner;
   private final ShuffleWriteMetrics writeMetrics;
   private final int shuffleId;
@@ -74,19 +78,9 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private final TaskContext taskContext;
   private final SparkConf sparkConf;
   private final boolean transferToEnabled;
-  private final int initialSortBufferSize;
 
+  private DistributeStream distributeStream;
   @Nullable private MapStatus mapStatus;
-  private long peakMemoryUsedBytes = 0;
-
-  /** Subclass of ByteArrayOutputStream that exposes `buf` directly. */
-  private static final class MyByteArrayOutputStream extends ByteArrayOutputStream {
-    MyByteArrayOutputStream(int size) { super(size); }
-    public byte[] getBuf() { return buf; }
-  }
-
-  private MyByteArrayOutputStream serBuffer;
-  private SerializationStream serOutputStream;
 
   /**
    * Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -111,13 +105,14 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final ShuffleDependency<K, V, V> dep = handle.dependency();
     this.shuffleId = dep.shuffleId();
     this.serializer = dep.serializer().newInstance();
+    System.err.println("Our distributor is " + dep.distributor() + " PageShuffleWriter");
+    assert(dep.distributor() != null);
+    this.distributor = dep.distributor().newInstance();
     this.partitioner = dep.partitioner();
     this.writeMetrics = taskContext.taskMetrics().shuffleWriteMetrics();
     this.taskContext = taskContext;
     this.sparkConf = sparkConf;
     this.transferToEnabled = sparkConf.getBoolean("spark.file.transferTo", true);
-    this.initialSortBufferSize = sparkConf.getInt("spark.shuffle.sort.initialBufferSize",
-            DEFAULT_INITIAL_SORT_BUFFER_SIZE);
     open();
   }
 
@@ -125,63 +120,42 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   public void write(scala.collection.Iterator<Product2<K, V>> records) throws IOException {
     System.out.println("Write in PageShuffleWriter");
     while (records.hasNext()) {
-      insertRecordIntoSorter(records.next());
+      insertRecordIntoDistributor(records.next());
     }
     closeAndWriteOutput();
   }
 
   private void open() throws IOException {
-    serBuffer = new MyByteArrayOutputStream(1024 * 1024);
-    serOutputStream = serializer.serializeStream(serBuffer);
+    distributeStream = distributor.distributeStream();
   }
 
   @VisibleForTesting
   void closeAndWriteOutput() throws IOException {
-    /*
-    assert(sorter != null);
-    updatePeakMemoryUsed();
-    serBuffer = null;
-    serOutputStream = null;
-    final SpillInfo[] spills = sorter.closeAndGetSpills();
-    sorter = null;
-    final long[] partitionLengths;
-    final File output = shuffleBlockResolver.getDataFile(shuffleId, mapId);
-    final File tmp = Utils.tempFileWith(output);
-    try {
-      partitionLengths = mergeSpills(spills, tmp);
-    } finally {
-      for (SpillInfo spill : spills) {
-        if (spill.file.exists() && ! spill.file.delete()) {
-          logger.error("Error while deleting spill file {}", spill.file.getPath());
-        }
-      }
+    final long[] partitionLengths = new long[partitioner.numPartitions()];
+    int i = 0;
+    while (i < partitioner.numPartitions()) {
+      partitionLengths[i] = 1;
+      i++;
     }
-    shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+
+    ShuffleBlockId blockId = new ShuffleBlockId(shuffleId, mapId, 0);
+    blockManager.putMyPage(blockId, distributeStream.getMemoryPages());
+
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
-    */
   }
 
   @VisibleForTesting
-  void insertRecordIntoSorter(Product2<K, V> record) throws IOException {
+  void insertRecordIntoDistributor(Product2<K, V> record) throws IOException {
     final K key = record._1();
     final int partitionId = partitioner.getPartition(key);
-    serBuffer.reset();
-    serOutputStream.writeKey(key, OBJECT_CLASS_TAG);
-    serOutputStream.writeValue(record._2(), OBJECT_CLASS_TAG);
-    serOutputStream.flush();
 
-    final int serializedRecordSize = serBuffer.size();
-    assert (serializedRecordSize > 0);
-
-    //sorter.insertRecord(
-    //        serBuffer.getBuf(), Platform.BYTE_ARRAY_OFFSET, serializedRecordSize, partitionId);
+    distributeStream.writeKey(key, OBJECT_CLASS_TAG);
+    distributeStream.writeValue(record._2(), OBJECT_CLASS_TAG);
   }
 
   @Override
   public Option<MapStatus> stop(boolean success) {
     try {
-      //taskContext.taskMetrics().incPeakExecutionMemory(getPeakMemoryUsedBytes());
-
       if (stopping) {
         return Option.apply(null);
       } else {
@@ -203,4 +177,5 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         //sorter.cleanupResources();
     }
   }
+
 }
