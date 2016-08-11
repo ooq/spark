@@ -23,12 +23,11 @@ import javax.annotation.concurrent.NotThreadSafe
 
 import scala.collection.mutable.Queue
 import scala.reflect.ClassTag
-
 import org.apache.spark.SparkEnv
 import org.apache.spark.annotation.{DeveloperApi, Private}
 import org.apache.spark.util.NextIterator
 import org.apache.spark.unsafe.memory.MemoryBlock
-
+import org.apache.spark.memory.{MemoryConsumer, TaskMemoryManager}
 
 @DeveloperApi
 abstract class Distributor {
@@ -45,18 +44,19 @@ abstract class Distributor {
 @DeveloperApi
 @NotThreadSafe
 abstract class DistributorInstance {
-  def distributeStream(): DistributeStream
+  def distributeStream(taskMemoryManager: TaskMemoryManager): DistributeStream
   def fetchStream(): FetchStream
 }
 
 @DeveloperApi
-abstract class DistributeStream {
+abstract class DistributeStream (taskMemoryManager: TaskMemoryManager)
+  extends MemoryConsumer (taskMemoryManager) {
   /** The most general-purpose method to write an object. */
   def writeObject[T: ClassTag](t: T): DistributeStream
   /** Writes the object representing the key of a key-value pair. */
   def writeKey[T: ClassTag](key: T): DistributeStream = writeObject(key)
   /** Writes the object representing the value of a key-value pair. */
-  def writeValue[T: ClassTag](value: T): DistributeStream = writeObject(value)
+  def writeValue[T: ClassTag](value: T): Boolean
   def flush(): Unit
   def close(): Unit
   def getMemoryPages(): Queue[MemoryBlock]

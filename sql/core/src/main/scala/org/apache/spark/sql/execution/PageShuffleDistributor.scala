@@ -21,14 +21,89 @@ import java.io._
 import java.nio.ByteBuffer
 
 import scala.reflect.ClassTag
-
+import scala.collection.mutable.Queue
 import com.google.common.io.ByteStreams
-
-import org.apache.spark.distributor.{DistributeStream, FetchStream, Distributor, DistributorInstance}
+import org.apache.spark.distributor.{DistributeStream, Distributor, DistributorInstance, FetchStream}
+import org.apache.spark.memory.{MemoryConsumer, TaskMemoryManager}
 import org.apache.spark.sql.catalyst.expressions.UnsafeRow
 import org.apache.spark.sql.execution.metric.SQLMetric
 import org.apache.spark.unsafe.Platform
+import org.apache.spark.unsafe.memory.MemoryBlock
 
+
+private[spark] class PageShuffleDistributeStream(taskMemoryManager: TaskMemoryManager)
+  extends DistributeStream (taskMemoryManager) {
+  private val dataPages = new Queue[MemoryBlock];
+  private var currentPage: MemoryBlock = null
+  private var base: Object = null
+  private var baseOff: Long = -1
+  private var pageCursor: Long = -1
+
+  def spill(size: Long, trigger: MemoryConsumer): Long = {
+    println("Calling spill() on RowBasedKeyValueBatch. Will not spill but return 0.")
+    return 0
+  }
+
+  private def acquireNewPage (required: Long) : Boolean = {
+    try {
+      currentPage = allocatePage(required)
+      base = currentPage.getBaseObject
+      baseOff = currentPage.getBaseOffset
+    }
+    catch {
+      case (e: OutOfMemoryError) => return false
+    }
+    dataPages.enqueue(currentPage)
+    Platform.putInt(currentPage.getBaseObject, currentPage.getBaseOffset, 0)
+    pageCursor = 4
+    return true
+  }
+
+
+  override def writeValue[T: ClassTag](value: T): Boolean = {
+    val row = value.asInstanceOf[UnsafeRow]
+    val recordLength: Integer = row.getSizeInBytes + 4
+    if (currentPage == null || currentPage.size - pageCursor < recordLength) {
+      if (!acquireNewPage(recordLength + 4L)) {
+        return false
+      }
+    }
+    Platform.putInt(base, baseOff + pageCursor, recordLength)
+    Platform.copyMemory(row.getBaseObject, row.getBaseOffset,
+      base, baseOff, row.getSizeInBytes)
+    pageCursor += recordLength
+    Platform.putInt(base, baseOff, Platform.getInt(base, baseOff) + 1)
+    true
+  }
+
+  override def writeKey[T: ClassTag](key: T): DistributeStream = {
+    // The key is only needed on the map side when computing partition ids. It does not need to
+    // be shuffled.
+    assert(null == key || key.isInstanceOf[Int])
+    this
+  }
+
+  override def writeAll[T: ClassTag](iter: Iterator[T]): DistributeStream = {
+    // This method is never called by shuffle code.
+    throw new UnsupportedOperationException
+  }
+
+  override def writeObject[T: ClassTag](t: T): DistributeStream = {
+    // This method is never called by shuffle code.
+    throw new UnsupportedOperationException
+  }
+
+  override def flush(): Unit = {
+    throw new UnsupportedOperationException
+  }
+
+  override def close(): Unit = {
+  }
+
+  override def getMemoryPages: Queue[MemoryBlock] = {
+    return dataPages;
+  }
+}
 
 private[sql] class PageShuffleDistributor(
                           numFields: Int,
@@ -44,37 +119,8 @@ private class PageShuffleDistributorInstance(
     * Serializes a stream of UnsafeRows. Within the stream, each record consists of a record
     * length (stored as a 4-byte integer, written high byte first), followed by the record's bytes.
     */
-  override def distributeStream: DistributeStream = new DistributeStream {
-    private[this] var writeBuffer: Array[Byte] = new Array[Byte](4096)
-
-    override def writeValue[T: ClassTag](value: T): DistributeStream = {
-      this
-    }
-
-    override def writeKey[T: ClassTag](key: T): DistributeStream = {
-      // The key is only needed on the map side when computing partition ids. It does not need to
-      // be shuffled.
-      assert(null == key || key.isInstanceOf[Int])
-      this
-    }
-
-    override def writeAll[T: ClassTag](iter: Iterator[T]): DistributeStream = {
-      // This method is never called by shuffle code.
-      throw new UnsupportedOperationException
-    }
-
-    override def writeObject[T: ClassTag](t: T): DistributeStream = {
-      // This method is never called by shuffle code.
-      throw new UnsupportedOperationException
-    }
-
-    override def flush(): Unit = {
-    }
-
-    override def close(): Unit = {
-      writeBuffer = null
-    }
-  }
+  override def distributeStream(taskMemoryManager: TaskMemoryManager): DistributeStream
+    = new PageShuffleDistributeStream(taskMemoryManager)
 
   override def fetchStream: FetchStream = {
     new FetchStream {

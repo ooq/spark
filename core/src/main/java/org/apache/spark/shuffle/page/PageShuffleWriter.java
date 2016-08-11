@@ -126,7 +126,7 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   private void open() throws IOException {
-    distributeStream = distributor.distributeStream();
+    distributeStream = distributor.distributeStream(memoryManager);
   }
 
   @VisibleForTesting

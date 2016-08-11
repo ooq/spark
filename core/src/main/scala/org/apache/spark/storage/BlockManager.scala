@@ -786,7 +786,7 @@ private[spark] class BlockManager(
     }
   }
 
-  def putMyPage[T: ClassTag](blockId: BlockId, buffer: Queue[MemoryBlock]) : Boolean = {
+  def putMyPage(blockId: BlockId, buffer: Queue[MemoryBlock]) : Boolean = {
     pageMap.synchronized {
       pageMap.put(blockId, buffer)
     }
