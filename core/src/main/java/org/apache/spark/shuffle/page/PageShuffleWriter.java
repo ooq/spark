@@ -105,7 +105,7 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final ShuffleDependency<K, V, V> dep = handle.dependency();
     this.shuffleId = dep.shuffleId();
     this.serializer = dep.serializer().newInstance();
-    System.err.println("Our distributor is " + dep.distributor() + " PageShuffleWriter");
+    //System.err.println("Our distributor is " + dep.distributor() + " PageShuffleWriter");
     assert(dep.distributor() != null);
     this.distributor = dep.distributor().newInstance();
     this.partitioner = dep.partitioner();
@@ -118,7 +118,7 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   @Override
   public void write(scala.collection.Iterator<Product2<K, V>> records) throws IOException {
-    System.out.println("Write in PageShuffleWriter");
+    //System.out.println("Write in PageShuffleWriter");
     while (records.hasNext()) {
       insertRecordIntoDistributor(records.next());
     }
@@ -151,6 +151,9 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
     distributeStream.writeKey(key, OBJECT_CLASS_TAG);
     distributeStream.writeValue(record._2(), OBJECT_CLASS_TAG);
+
+    //System.out.println("writing out in PageShuffleWriter");
+    //System.out.println(key +  " " + record._2());
   }
 
   @Override

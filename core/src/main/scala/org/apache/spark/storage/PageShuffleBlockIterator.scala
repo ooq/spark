@@ -30,7 +30,7 @@ final class PageShuffleBlockIterator(
                   context: TaskContext,
                   blockManager: BlockManager,
                   blocksByAddress: Seq[(BlockManagerId, Seq[(BlockId, Long)])])
-  extends Iterator[(BlockId, NextIterator[(Any, Any)])] with Logging {
+  extends Iterator[Queue[MemoryBlock]] with Logging {
 
   private[this] var numBlocksToFetch = 0
 
@@ -58,6 +58,7 @@ final class PageShuffleBlockIterator(
   override def next(): (Queue[MemoryBlock]) = {
     numBlocksProcessed += 1
     val blockId = localBlocks.dequeue()
+    //println("Reading block " + blockId + " num of pages " + blockManager.getMyPage(blockId).length)
     blockManager.getMyPage(blockId)
   }
 }

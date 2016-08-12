@@ -76,7 +76,7 @@ private[spark] class ShuffleMapTask(
     try {
       val manager = SparkEnv.get.shuffleManager
       writer = manager.getWriter[Any, Any](dep.shuffleHandle, partitionId, context)
-      println("in ShuffleMapTask, our writer is " + writer.getClass().getName())
+      //println("in ShuffleMapTask, our writer is " + writer.getClass().getName())
       writer.write(rdd.iterator(partition, context).asInstanceOf[Iterator[_ <: Product2[Any, Any]]])
       writer.stop(success = true).get
     } catch {

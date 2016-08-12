@@ -125,6 +125,7 @@ private class UnsafeRowSerializerInstance(
               rowBuffer = new Array[Byte](rowSize)
             }
             ByteStreams.readFully(dIn, rowBuffer, 0, rowSize)
+            //println("rowSize = " + rowSize)
             row.pointTo(rowBuffer, Platform.BYTE_ARRAY_OFFSET, rowSize)
             rowSize = readSize()
             if (rowSize == EOF) { // We are returning the last row in this stream

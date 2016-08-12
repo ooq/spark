@@ -33,20 +33,24 @@ import org.apache.spark.unsafe.memory.MemoryBlock
 
 private[spark] class PageShuffleDistributeStream(taskMemoryManager: TaskMemoryManager)
   extends DistributeStream (taskMemoryManager) {
-  private val dataPages = new Queue[MemoryBlock];
+  private val dataPages = new Queue[MemoryBlock]
   private var currentPage: MemoryBlock = null
   private var base: Object = null
   private var baseOff: Long = -1
   private var pageCursor: Long = -1
 
   def spill(size: Long, trigger: MemoryConsumer): Long = {
-    println("Calling spill() on RowBasedKeyValueBatch. Will not spill but return 0.")
+    println("Calling spill() on PageShuffleDistributeStream. Will not spill but return 0.")
+    new Throwable().printStackTrace()
     return 0
   }
 
   private def acquireNewPage (required: Long) : Boolean = {
     try {
-      currentPage = allocatePage(required)
+      //currentPage = allocatePage(required)
+
+      currentPage = MemoryBlock.fromLongArray(new Array[Long](1 * 1000 * 1000))
+      //currentPage = new MemoryBlock(null, Platform.allocateMemory(8 * 1000 * 1000), 8 * 1000 * 1000)
       base = currentPage.getBaseObject
       baseOff = currentPage.getBaseOffset
     }
@@ -54,13 +58,14 @@ private[spark] class PageShuffleDistributeStream(taskMemoryManager: TaskMemoryMa
       case (e: OutOfMemoryError) => return false
     }
     dataPages.enqueue(currentPage)
-    Platform.putInt(currentPage.getBaseObject, currentPage.getBaseOffset, 0)
+    Platform.putInt(base, baseOff, 0)
     pageCursor = 4
     return true
   }
 
 
   override def writeValue[T: ClassTag](value: T): Boolean = {
+    // println("writing value in PageShuffleDistributor " + value)
     val row = value.asInstanceOf[UnsafeRow]
     val recordLength: Integer = row.getSizeInBytes + 4
     if (currentPage == null || currentPage.size - pageCursor < recordLength) {
@@ -68,9 +73,11 @@ private[spark] class PageShuffleDistributeStream(taskMemoryManager: TaskMemoryMa
         return false
       }
     }
-    Platform.putInt(base, baseOff + pageCursor, recordLength)
+    //println("record length is " + recordLength)
+
+    Platform.putInt(base, baseOff + pageCursor, recordLength-4)
     Platform.copyMemory(row.getBaseObject, row.getBaseOffset,
-      base, baseOff, row.getSizeInBytes)
+      base, baseOff + pageCursor + 4, row.getSizeInBytes)
     pageCursor += recordLength
     Platform.putInt(base, baseOff, Platform.getInt(base, baseOff) + 1)
     true
@@ -101,7 +108,7 @@ private[spark] class PageShuffleDistributeStream(taskMemoryManager: TaskMemoryMa
   }
 
   override def getMemoryPages: Queue[MemoryBlock] = {
-    return dataPages;
+    dataPages
   }
 }
 
@@ -122,25 +129,25 @@ private class PageShuffleDistributorInstance(
   override def distributeStream(taskMemoryManager: TaskMemoryManager): DistributeStream
     = new PageShuffleDistributeStream(taskMemoryManager)
 
-  override def fetchStream (pages: Queue[MemoryBlock]): FetchStream = {
-    new FetchStream {
-      private[this] var row: UnsafeRow = new UnsafeRow(numFields)
+  override def fetchStream (taskMemoryManager: TaskMemoryManager,
+                            pages: Queue[MemoryBlock]): FetchStream = {
+    new FetchStream (taskMemoryManager) {
+      private[this] val row: UnsafeRow = new UnsafeRow(numFields)
 
       override def asKeyValueIterator: Iterator[(Int, UnsafeRow)] = {
-        def getMyPageIterator(blockId: BlockId) : NextIterator[(Any, Any)] = {
-          return new NextIterator[(Any, Any)] {
-            private val myPages = pageMap.synchronized {pageMap.get(blockId)}
-            // val rowCopy: UnsafeRow = new UnsafeRow(3)
+        new Iterator[(Int, UnsafeRow)] {
             private var currentPage: MemoryBlock = null
             private var currentNum = 0
             private var currentCursor = 0
             private var currentBase: Object = null
             private var currentOff: Long = 0
+            private var finished = false
+            private[this] var rowTuple: (Int, UnsafeRow) = (0, row)
 
 
-            private def getNextRow() = {
+          private def getNextRow() = {
               if (currentPage == null || currentNum == 0) {
-                currentPage = myPages.dequeue()
+                currentPage = pages.dequeue()
                 currentBase = currentPage.getBaseObject
                 currentOff = currentPage.getBaseOffset
                 currentNum = Platform.getInt(currentBase, currentOff)
@@ -148,28 +155,24 @@ private class PageShuffleDistributorInstance(
               }
 
               val l = Platform.getInt(currentBase, currentOff + currentCursor)
-              // rowCopy.pointTo(currentBase, currentOff + currentCursor, l - 4)
+              row.pointTo(currentBase, currentOff + currentCursor + 4, l)
+
               currentNum -= 1
-              currentCursor += l
+              currentCursor += l + 4
+
+              if (currentNum == 0) currentPage = null
+              //if (currentNum == 0) Platform.freeMemory(currentPage.getBaseOffset)
             }
 
-            override protected def getNext() = {
-              try {
+          override def hasNext: Boolean = {
+            (pages.length != 0 || currentNum != 0)
+          }
+
+          override def next() = {
                 getNextRow()
-                (0, 0)
-              } catch {
-                case eof: Exception =>
-                  finished = true
-                  null
-              }
-            }
-
-            override protected def close() {
-              pageMap.remove(blockId)
-              // do nothing
+                rowTuple
             }
           }
-        }
       }
 
       override def asIterator: Iterator[Any] = {
@@ -180,11 +183,11 @@ private class PageShuffleDistributorInstance(
       override def readKey[T: ClassTag](): T = {
         // We skipped serialization of the key in writeKey(), so just return a dummy value since
         // this is going to be discarded anyways.
-        null.asInstanceOf[T]
+        throw new UnsupportedOperationException
       }
 
       override def readValue[T: ClassTag](): T = {
-        row.asInstanceOf[T]
+        throw new UnsupportedOperationException
       }
 
       override def readObject[T: ClassTag](): T = {
@@ -194,6 +197,13 @@ private class PageShuffleDistributorInstance(
 
       override def close(): Unit = {
       }
+
+      def spill(size: Long, trigger: MemoryConsumer): Long = {
+        println("Calling spill() on fetchStream. Will not spill but return 0.")
+        new Throwable().printStackTrace()
+        return 0
+      }
+
     }
   }
 }

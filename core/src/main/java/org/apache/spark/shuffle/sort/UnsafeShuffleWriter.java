@@ -161,7 +161,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     // We do this rather than a standard try/catch/re-throw to handle
     // generic throwables.
     boolean success = false;
-    System.out.println("Write in UnsafeShuffleWriter");
+    //System.out.println("Write in UnsafeShuffleWriter");
     try {
       while (records.hasNext()) {
         insertRecordIntoSorter(records.next());

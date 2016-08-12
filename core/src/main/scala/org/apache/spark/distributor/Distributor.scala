@@ -45,7 +45,7 @@ abstract class Distributor {
 @NotThreadSafe
 abstract class DistributorInstance {
   def distributeStream(taskMemoryManager: TaskMemoryManager): DistributeStream
-  def fetchStream(pages: Queue[MemoryBlock]): FetchStream
+  def fetchStream(taskMemoryManager: TaskMemoryManager, pages: Queue[MemoryBlock]): FetchStream
 }
 
 @DeveloperApi
@@ -70,7 +70,8 @@ abstract class DistributeStream (taskMemoryManager: TaskMemoryManager)
 }
 
 @DeveloperApi
-abstract class FetchStream {
+abstract class FetchStream (taskMemoryManager: TaskMemoryManager)
+extends MemoryConsumer (taskMemoryManager) {
   /** The most general-purpose method to read an object. */
   def readObject[T: ClassTag](): T
   /** Reads the object representing the key of a key-value pair. */
@@ -103,19 +104,5 @@ abstract class FetchStream {
     * Read the elements of this stream through an iterator over key-value pairs. This can only be
     * called once, as reading each element will consume data from the input source.
     */
-  def asKeyValueIterator: Iterator[(Any, Any)] = new NextIterator[(Any, Any)] {
-    override protected def getNext() = {
-      try {
-        (readKey[Any](), readValue[Any]())
-      } catch {
-        case eof: EOFException =>
-          finished = true
-          null
-      }
-    }
-
-    override protected def close() {
-      FetchStream.this.close()
-    }
-  }
+  def asKeyValueIterator: Iterator[(Any, Any)]
 }

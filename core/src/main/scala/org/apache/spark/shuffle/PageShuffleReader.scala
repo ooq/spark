@@ -56,9 +56,9 @@ private[spark] class PageShuffleReader[K, C](
     val distributor = dep.distributor.newInstance()
 
     // Create a key/value iterator for each stream
-    val recordIter = pageBlockFetcherItr.flatMap { case pages =>
-      val itr = distributor.fetchStream(pages).asKeyValueIterator
-      iter
+    val recordIter = pageBlockFetcherItr.flatMap { case pages: Queue[MemoryBlock] =>
+      val itr = distributor.fetchStream(context.taskMemoryManager(), pages).asKeyValueIterator
+      itr
     }
 
     // Update the context task metrics for each record read.
@@ -66,7 +66,7 @@ private[spark] class PageShuffleReader[K, C](
     val metricIter = CompletionIterator[(Any, Any), Iterator[(Any, Any)]](
       recordIter.map { record =>
         readMetrics.incRecordsRead(1)
-        // println("record " + record)
+        // println("record in PageShuffleReader " + record)
         record
       },
       context.taskMetrics().mergeShuffleReadMetrics())

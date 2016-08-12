@@ -168,6 +168,7 @@ public class TaskMemoryManager {
       // call spill() on itself
       if (got < required) {
         try {
+          logger.warn("To be spilled, memory usage {}", memoryManager.executionMemoryUsed());
           long released = consumer.spill(required - got, consumer);
           if (released > 0) {
             logger.debug("Task {} released {} from itself ({})", taskAttemptId,
