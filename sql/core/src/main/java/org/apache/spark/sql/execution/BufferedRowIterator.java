@@ -77,6 +77,7 @@ public abstract class BufferedRowIterator {
    * If it returns true, the caller should exit the loop (return from processNext()).
    */
   protected boolean shouldStop() {
+    //return true;
     return !currentRows.isEmpty();
   }
 

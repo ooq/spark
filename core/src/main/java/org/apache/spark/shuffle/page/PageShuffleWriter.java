@@ -146,10 +146,10 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   @VisibleForTesting
   void insertRecordIntoDistributor(Product2<K, V> record) throws IOException {
-    final K key = record._1();
-    final int partitionId = partitioner.getPartition(key);
+    //final K key = record._1();
+    //final int partitionId = partitioner.getPartition(key);
 
-    distributeStream.writeKey(key, OBJECT_CLASS_TAG);
+    //distributeStream.writeKey(key, OBJECT_CLASS_TAG);
     distributeStream.writeValue(record._2(), OBJECT_CLASS_TAG);
 
     //System.out.println("writing out in PageShuffleWriter");

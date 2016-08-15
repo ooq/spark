@@ -249,7 +249,8 @@ object ShuffleExchange {
       if (needToCopyObjectsBeforeShuffle(part, serializer)) {
         rdd.mapPartitionsInternal { iter =>
           val getPartitionKey = getPartitionKeyExtractor()
-          iter.map { row => (part.getPartition(getPartitionKey(row)), row.copy()) }
+          //iter.map { row => (part.getPartition(getPartitionKey(row)), row.copy()) }
+          iter.map { row => (part.getPartition(getPartitionKey(row)), row) }
         }
       } else {
         rdd.mapPartitionsInternal { iter =>

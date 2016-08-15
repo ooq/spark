@@ -314,15 +314,94 @@ class AggregateBenchmark extends BenchmarkBase {
      */
   }
 
+  test("shuffle sort test 2") {
+    // val N = 20 << 20
+    //val N = 3
+    sparkSessionSort
+    var i = 5
+    while (i < 6) {
+      var minTime: Long = 10000
+      var j = 0
+      val N = 1 << (i + 15)
+      while (j < 3) {
+        val timeStart = System.nanoTime
+        sparkSessionSort.range(N)
+          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
+          //.selectExpr("repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k0")
+          //.selectExpr(List.range(0, i).map(x => "cast((id & 0) as string) as k" + x): _*)
+          //.repartition(1).distinct().collect()
+          .groupBy("id").count().show(1)
+        val timeEnd = System.nanoTime
+        val nsPerRow: Long = (timeEnd - timeStart) / N
+        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        j += 1
+      }
+      printf("%20s %20s\n", N, minTime)
+      i += 1
+    }
+    /*
+               65536                  969
+              131072                  602
+              262144                  494
+              524288                  435
+             1048576                  417
+             2097152                  416
+             4194304                  431
+
+     */
+    while (true) {}
+
+  }
+  test("page sort test 2") {
+    // val N = 20 << 20
+    //val N = 3
+    sparkSessionNoCopy
+    var i = 5
+    while (i < 6) {
+      var minTime: Long = 10000
+      var j = 0
+      val N = 1 << (i + 15)
+      while (j < 3) {
+        val timeStart = System.nanoTime
+        sparkSessionNoCopy.range(N)
+          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
+          //.selectExpr("repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k0")
+          //.selectExpr(List.range(0, i).map(x => "cast((id & 0) as string) as k" + x): _*)
+          //.repartition(1).distinct().collect()
+          .groupBy("id").count().show(1)
+        val timeEnd = System.nanoTime
+        val nsPerRow: Long = (timeEnd - timeStart) / N
+        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        j += 1
+      }
+      printf("%20s %20s\n", N, minTime)
+      i += 1
+    }
+    /*
+               65536                  969
+              131072                  602
+              262144                  494
+              524288                  435
+             1048576                  417
+             2097152                  416
+             4194304                  431
+
+     */
+    while (true) {}
+
+  }
+
+
+
   test("shuffle sort test") {
     // val N = 20 << 20
     //val N = 3
 
     var i = 1
-    while (i < 2) {
+    while (i < 13) {
       var minTime: Long = 10000
       var j = 0
-      val N = 1 << (i + 18)
+      val N = 1 << (i + 15)
       while (j < 10) {
         val timeStart = System.nanoTime
         sparkSessionSort.range(N)
@@ -356,10 +435,10 @@ class AggregateBenchmark extends BenchmarkBase {
 
   test("shuffle page test") {
     var i = 1
-    while (i < 5) {
+    while (i < 13) {
       var minTime: Long = 10000
       var j = 0
-      val N = 1 << (i + 18)
+      val N = 1 << (i + 15)
       while (j < 10) {
         val timeStart = System.nanoTime
         sparkSessionNoCopy.range(N)
@@ -416,6 +495,31 @@ class AggregateBenchmark extends BenchmarkBase {
              4194304                  324
      */
     while (true) {}
+  }
+
+  test("no shuffle test") {
+    var i = 1
+    while (i < 5) {
+      var minTime: Long = 10000
+      var j = 0
+      val N = 1 << (i + 18)
+      while (j < 10) {
+        val timeStart = System.nanoTime
+        sparkSessionNoCopy.range(N)
+          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
+          //.selectExpr("id&0 as k0", "repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k1")
+          // .selectExpr(List.range(0, 1).map(x => "cast(repeat('aaa',"+(1<<(i)) + ")) as k" + x): _*)
+          .selectExpr("sum(id)").collect()
+        val timeEnd = System.nanoTime
+        val nsPerRow: Long = (timeEnd - timeStart) / N
+        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        j += 1
+      }
+      printf("%20s %20s\n", N, minTime)
+      i += 1
+    }
+    while (true) {}
+
   }
 
 

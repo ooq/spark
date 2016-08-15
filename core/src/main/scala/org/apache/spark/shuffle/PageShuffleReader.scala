@@ -109,5 +109,7 @@ private[spark] class PageShuffleReader[K, C](
       case None =>
         aggregatedIter
     }
+
+    recordIter.asInstanceOf[Iterator[(K, C)]]
   }
 }
