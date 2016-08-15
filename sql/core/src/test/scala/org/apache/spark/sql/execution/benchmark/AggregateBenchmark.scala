@@ -29,8 +29,12 @@ import org.apache.spark.sql.types.{LongType, StructType}
 import org.apache.spark.unsafe.Platform
 import org.apache.spark.unsafe.hash.Murmur3_x86_32
 import org.apache.spark.unsafe.map.BytesToBytesMap
-import org.apache.spark.util.Benchmark
+import org.apache.spark.util.{Benchmark, CompletionIterator}
 import org.apache.spark.sql.Column
+
+import scala.collection.mutable.Queue
+import org.apache.spark.unsafe.memory.MemoryBlock
+
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -142,8 +146,8 @@ class AggregateBenchmark extends BenchmarkBase {
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
       .config("spark.default.parallelism", 1)
       .config("spark.shuffle.sort.bypassMergeThreshold", -1)
-    .config("spark.executor.memory", "4g")
-    .config("spark.driver.memory", "4g")
+    //.config("spark.executor.memory", "1500m")
+    //.config("spark.driver.memory", "1300m")
 
     .getOrCreate()
 
@@ -157,8 +161,8 @@ class AggregateBenchmark extends BenchmarkBase {
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
     .config("spark.default.parallelism", 1)
     .config("spark.shuffle.sort.bypassMergeThreshold", -1)
-    .config("spark.executor.memory", "4g")
-    .config("spark.driver.memory", "4g")
+    //.config("spark.executor.memory", "4g")
+    //.config("spark.driver.memory", "4g")
     .getOrCreate()
 
 
@@ -198,50 +202,6 @@ class AggregateBenchmark extends BenchmarkBase {
     //}
     //benchmark.run()
     //while(true) {}
-  }
-
-  test("shuffle sort test") {
-    val N = 20 << 20
-    //val N = 3
-
-    val benchmark = new Benchmark("shuffle sort test", N)
-
-    var i = 1
-    while (i < 10) {
-      var minTime: Long = 10000
-      var j = 0
-      while (j < 10) {
-        val timeStart = System.nanoTime
-        sparkSessionSort.range(N)
-          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
-          //.selectExpr("repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k0")
-          //.selectExpr(List.range(0, i).map(x => "cast((id & 0) as string) as k" + x): _*)
-          //.repartition(1).distinct().collect()
-          .repartition(1).collect()
-        val timeEnd = System.nanoTime
-        val nsPerRow: Long = (timeEnd - timeStart) / N
-        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
-        j += 1
-      }
-      printf("%20s %20s\n", i, minTime)
-      i += 1
-    }
-    /*
-                   1                  399
-                   2                  383
-                   3                  397
-                   4                  405
-                   5                  427
-                   6                  467
-                   7                  553
-                   8                  722
-                   9                 1079
-
-
-
-     */
-    while (true) {}
-
   }
 
   test("shuffle sort test - big cardinality") {
@@ -354,32 +314,68 @@ class AggregateBenchmark extends BenchmarkBase {
      */
   }
 
-
-  test("shuffle page test") {
-    val N = 20 << 20
-    //val N = 2
-
-    val benchmark = new Benchmark("shuffle page test", N)
+  test("shuffle sort test") {
+    // val N = 20 << 20
+    //val N = 3
 
     var i = 1
-    while (i < 10) {
+    while (i < 2) {
       var minTime: Long = 10000
       var j = 0
+      val N = 1 << (i + 18)
+      while (j < 10) {
+        val timeStart = System.nanoTime
+        sparkSessionSort.range(N)
+          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
+          //.selectExpr("repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k0")
+          //.selectExpr(List.range(0, i).map(x => "cast((id & 0) as string) as k" + x): _*)
+          //.repartition(1).distinct().collect()
+          .repartition(1).selectExpr("sum(id)").show()
+        val timeEnd = System.nanoTime
+        val nsPerRow: Long = (timeEnd - timeStart) / N
+        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        j += 1
+      }
+      printf("%20s %20s\n", N, minTime)
+      i += 1
+    }
+    /*
+               65536                  969
+              131072                  602
+              262144                  494
+              524288                  435
+             1048576                  417
+             2097152                  416
+             4194304                  431
+
+     */
+    while (true) {}
+
+  }
+
+
+  test("shuffle page test") {
+    var i = 1
+    while (i < 5) {
+      var minTime: Long = 10000
+      var j = 0
+      val N = 1 << (i + 18)
       while (j < 10) {
         val timeStart = System.nanoTime
         sparkSessionNoCopy.range(N)
           //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
           //.selectExpr("id&0 as k0", "repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k1")
           // .selectExpr(List.range(0, 1).map(x => "cast(repeat('aaa',"+(1<<(i)) + ")) as k" + x): _*)
-          .repartition(1).collect()
+          .repartition(1).selectExpr("sum(id)").collect()
         val timeEnd = System.nanoTime
         val nsPerRow: Long = (timeEnd - timeStart) / N
         if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
         j += 1
       }
-      printf("%20s %20s\n", i, minTime)
+      printf("%20s %20s\n", N, minTime)
       i += 1
     }
+    while (true) {}
 
     /*
     N = 1 << 20, 10 tries, best of 4-10, distinct
@@ -410,6 +406,14 @@ class AggregateBenchmark extends BenchmarkBase {
                    6                  532
                    7                  758
                    8                 1259
+
+               65536                  918
+              131072                  582
+              262144                  412
+              524288                  344
+             1048576                  305
+             2097152                  300
+             4194304                  324
      */
     while (true) {}
   }
@@ -859,6 +863,130 @@ class AggregateBenchmark extends BenchmarkBase {
     Aggregate HashMap                         121 /  131        173.3           5.8       2.2X
     */
     benchmark.run()
+  }
+
+
+  test("iterator vs. loop: iterator") {
+    var kk = 0
+    while (kk < 20) {
+
+      val dataPages = new Queue[MemoryBlock]
+      var i = 0
+      while (i < 100) {
+        val currentPage = MemoryBlock.fromLongArray(new Array[Long](1 * 1000 * 1000))
+        Platform.putInt(currentPage.getBaseObject, currentPage.getBaseOffset, 285714)
+        dataPages.enqueue(currentPage)
+        i += 1
+      }
+
+      val itr: Iterator[(Int, UnsafeRow)] = {
+        new Iterator[(Int, UnsafeRow)] {
+          private[this] val row: UnsafeRow = new UnsafeRow(3)
+          private val pages = dataPages
+          private var currentPage: MemoryBlock = null
+          private var currentNum = 0
+          private var currentCursor = 0
+          private var currentBase: Object = null
+          private var currentOff: Long = 0
+          private var finished = false
+          private[this] var rowTuple: (Int, UnsafeRow) = (0, row)
+
+
+          private def getNextRow() = {
+            if (currentPage == null || currentNum == 0) {
+              currentPage = pages.dequeue()
+              currentBase = currentPage.getBaseObject
+              currentOff = currentPage.getBaseOffset
+              currentNum = Platform.getInt(currentBase, currentOff)
+              currentCursor = 4
+            }
+
+            // val l = Platform.getInt(currentBase, currentOff + currentCursor)
+            val l = 24
+            row.pointTo(currentBase, currentOff + currentCursor + 4, l)
+
+            currentNum -= 1
+            currentCursor += l + 4
+
+            if (currentNum == 0) currentPage = null
+            //if (currentNum == 0) Platform.freeMemory(currentPage.getBaseOffset)
+          }
+
+          override def hasNext: Boolean = {
+            (pages.length != 0 || currentNum != 0)
+          }
+
+          override def next() = {
+            getNextRow()
+            rowTuple
+          }
+        }
+      }
+
+      /*
+      val metricIter = CompletionIterator[(Any, Any), Iterator[(Any, Any)]](
+        itr.map { record =>
+          record
+        },
+        null)
+        */
+      val metricIter = itr
+
+      var k = 0
+      val start = System.nanoTime()
+      while (metricIter.hasNext) {
+        val row = metricIter.next()._2
+        //val a1 = row.getLong(0)
+        //val a2 = row.getLong(1)
+        //val a3 = row.getLong(2)
+        k = k + 1
+      }
+      val end = System.nanoTime()
+      println("Time is " + ((end - start) / 285714) + " ns/100row for k = " + k)
+      kk += 1
+    }
+  }
+
+
+  test("iterator vs. loop: loop") {
+    var kk = 0
+    while (kk < 20) {
+      val dataPages = new Queue[MemoryBlock]
+      var i = 0
+      while (i < 100) {
+        val currentPage = MemoryBlock.fromLongArray(new Array[Long](1 * 1000 * 1000))
+        Platform.putInt(currentPage.getBaseObject, currentPage.getBaseOffset, 285714)
+        dataPages.enqueue(currentPage)
+        i += 1
+      }
+
+      i = 0
+      var k = 0
+      val start = System.nanoTime()
+      while (i < 100) {
+        var j = 0
+        val page = dataPages.dequeue()
+        val currentBase = page.getBaseObject
+        val currentOff = page.getBaseOffset
+        var currentCursor = 4
+        val numRows = Platform.getInt(page.getBaseObject, page.getBaseOffset)
+        val row = new UnsafeRow(3)
+        while (j < numRows) {
+          val l = 24
+          row.pointTo(currentBase, currentOff + currentCursor + 4, l)
+          currentCursor += l + 4
+          j += 1
+          //val a1 = row.getLong(0)
+          //val a2 = row.getLong(1)
+          //val a3 = row.getLong(2)
+          k += 1
+        }
+        i += 1
+      }
+      val end = System.nanoTime()
+      println("Time is " + ((end - start) / 285714) + " ns/100row for k = " + k)
+      kk += 1
+    }
   }
 
 }
