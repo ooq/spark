@@ -159,7 +159,21 @@ class AggregateBenchmark extends BenchmarkBase {
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
-    .config("spark.default.parallelism", 1)
+    .config("spark.default.parallelism", 2)
+    .config("spark.shuffle.sort.bypassMergeThreshold", -1)
+    //.config("spark.executor.memory", "4g")
+    //.config("spark.driver.memory", "4g")
+    .getOrCreate()
+
+  lazy val sparkSessionMemory = SparkSession.builder
+    .master("local[1]")
+    .appName("microbenchmark")
+    .config("spark.sql.shuffle.partitions", 1)
+    .config("spark.shuffle.manager", "memory")
+    .config("spark.sql.autoBroadcastJoinThreshold", 1)
+    .config("spark.sql.codegen.wholeStage", "true")
+    .config("spark.sql.codegen.aggregate.map.columns.max", "100")
+    .config("spark.default.parallelism", 2)
     .config("spark.shuffle.sort.bypassMergeThreshold", -1)
     //.config("spark.executor.memory", "4g")
     //.config("spark.driver.memory", "4g")
@@ -176,21 +190,20 @@ class AggregateBenchmark extends BenchmarkBase {
 
   test("shuffle unit test") {
     //val N = 1 << 20
-    val N = 3
+    val N = 10
 
     val benchmark = new Benchmark("shuffle unit test", N)
 
     def f0(): Unit
     = sparkSessionSort.range(N)
-              //.selectExpr("(id & 15) as k", "id as k1", "id as k2")
-               .selectExpr("(id & 15) as k")
-                .repartition(1).distinct().collect()
+      .repartition(2).selectExpr("sum(id)").show()
 
     def f1(): Unit
     = sparkSessionNoCopy.range(N)
-              .selectExpr("(id & 0) as k0", "(id & 0) as k1", "(id & 0) as k2")
-              // .selectExpr("(id & 15) as k")
-              .repartition(1).distinct().collect()
+      .repartition(2).selectExpr("sum(id)").show()
+
+    f0()
+
     f1()
 
     //benchmark.addCase(s"sort", numIters = 5) { iter =>
@@ -201,7 +214,7 @@ class AggregateBenchmark extends BenchmarkBase {
     //  f1()
     //}
     //benchmark.run()
-    //while(true) {}
+    while(true) {}
   }
 
   test("shuffle sort test - big cardinality") {
@@ -394,108 +407,98 @@ class AggregateBenchmark extends BenchmarkBase {
 
 
   test("shuffle sort test") {
-    // val N = 20 << 20
-    //val N = 3
 
-    var i = 1
-    while (i < 13) {
+    var i = 5
+    while (i < 6) {
       var minTime: Long = 10000
       var j = 0
       val N = 1 << (i + 15)
       while (j < 10) {
         val timeStart = System.nanoTime
         sparkSessionSort.range(N)
-          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
-          //.selectExpr("repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k0")
-          //.selectExpr(List.range(0, i).map(x => "cast((id & 0) as string) as k" + x): _*)
-          //.repartition(1).distinct().collect()
-          .repartition(1).selectExpr("sum(id)").show()
+          .repartition(1).selectExpr("sum(id)").collect()
         val timeEnd = System.nanoTime
         val nsPerRow: Long = (timeEnd - timeStart) / N
         if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        printf("Round %20s %20s\n", j, nsPerRow)
         j += 1
       }
+      System.out.println(Benchmark.getJVMOSInfo())
+      System.out.println(Benchmark.getProcessorName())
       printf("%20s %20s\n", N, minTime)
       i += 1
     }
     /*
-               65536                  969
-              131072                  602
-              262144                  494
-              524288                  435
-             1048576                  417
-             2097152                  416
-             4194304                  431
+Java HotSpot(TM) 64-Bit Server VM 1.7.0_40-b43 on Mac OS X 10.10.5
+Intel(R) Core(TM) i7-3540M CPU @ 3.00GHz
+
+             1048576                  368
 
      */
-    while (true) {}
-
   }
 
-
   test("shuffle page test") {
-    var i = 1
-    while (i < 13) {
+
+    var i = 5
+    while (i < 6) {
       var minTime: Long = 10000
       var j = 0
       val N = 1 << (i + 15)
       while (j < 10) {
         val timeStart = System.nanoTime
         sparkSessionNoCopy.range(N)
-          //.selectExpr(List.range(0, 1).map(x => "cast((id & 0) AS VARCHAR("+(1<<(i)) + ")) as k" + x): _*)
-          //.selectExpr("id&0 as k0", "repeat(cast(id&0 as string), " + (1 << (i)) +  ") as k1")
-          // .selectExpr(List.range(0, 1).map(x => "cast(repeat('aaa',"+(1<<(i)) + ")) as k" + x): _*)
           .repartition(1).selectExpr("sum(id)").collect()
         val timeEnd = System.nanoTime
         val nsPerRow: Long = (timeEnd - timeStart) / N
         if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        printf("Round %20s %20s\n", j, nsPerRow)
         j += 1
       }
+      System.out.println(Benchmark.getJVMOSInfo())
+      System.out.println(Benchmark.getProcessorName())
       printf("%20s %20s\n", N, minTime)
       i += 1
     }
-    while (true) {}
-
     /*
-    N = 1 << 20, 10 tries, best of 4-10, distinct
-                   1                  281
-                   2                  261
-                   3                  278
-                   4                  292
-                   5                  300
-                   6                  325
-                   7                  380
-                   8                  528
-                   9                  858
+Java HotSpot(TM) 64-Bit Server VM 1.7.0_40-b43 on Mac OS X 10.10.5
+Intel(R) Core(TM) i7-3540M CPU @ 3.00GHz
 
-    first:
-                   1                  219
-                   2                  213
-                   3                  209
-                   4                  210
-                   5                  221
-                   6                  227
+             1048576                  194
 
-
-                   1                  426
-                   2                  421
-                   3                  435
-                   4                  443
-                   5                  492
-                   6                  532
-                   7                  758
-                   8                 1259
-
-               65536                  918
-              131072                  582
-              262144                  412
-              524288                  344
-             1048576                  305
-             2097152                  300
-             4194304                  324
      */
-    while (true) {}
   }
+
+
+  test("shuffle memory test") {
+
+    var i = 5
+    while (i < 6) {
+      var minTime: Long = 10000
+      var j = 0
+      val N = 1 << (i + 15)
+      while (j < 10) {
+        val timeStart = System.nanoTime
+        sparkSessionMemory.range(N)
+          .repartition(1).selectExpr("sum(id)").collect()
+        val timeEnd = System.nanoTime
+        val nsPerRow: Long = (timeEnd - timeStart) / N
+        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        printf("Round %20s %20s\n", j, nsPerRow)
+        j += 1
+      }
+      System.out.println(Benchmark.getJVMOSInfo())
+      System.out.println(Benchmark.getProcessorName())
+      printf("%20s %20s\n", N, minTime)
+      i += 1
+    }
+    /*
+Java HotSpot(TM) 64-Bit Server VM 1.7.0_40-b43 on Mac OS X 10.10.5
+Intel(R) Core(TM) i7-3540M CPU @ 3.00GHz
+
+             1048576                  330
+     */
+  }
+
 
   test("no shuffle test") {
     var i = 1

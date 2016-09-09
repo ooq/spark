@@ -58,7 +58,7 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
   private var serializationStream: SerializationStream = null
 
   def open() {
-    println("The serializer we are using is " + ser)
+    //println("The serializer we are using is " + ser)
     compressionStream = serializerManager.wrapForCompression(blockId, byteOutputStream)
     serializationStream = ser.newInstance().serializeStream(compressionStream)
     initialized = true
@@ -75,12 +75,16 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
     if (!initialized) {
       open()
     }
-    serializationStream.writeObject(key)
-    serializationStream.writeObject(value)
+
+    //serializationStream.writeObject(key)
+    //serializationStream.writeObject(value)
+    serializationStream.writeValue(value)
   }
 
   // true if succeed, otherwise return false
   def close(saveToBlockManager: Boolean): Long = {
+    // val timeStart = System.nanoTime
+
     if (initialized) {
       serializationStream.flush()
       serializationStream.close()
@@ -90,6 +94,9 @@ private[spark] class SerializedObjectWriter(blockManager: BlockManager,
           byteOutputStream.getByteBuffer(),
           StorageLevel.MEMORY_ONLY_SER,
           tellMaster = false)
+        // val timeEnd = System.nanoTime
+        // val durationMs = (timeEnd - timeStart) / 1000 / 1000
+        // println("Time spent on copying the buffer " + durationMs)
         return result
       }
     }

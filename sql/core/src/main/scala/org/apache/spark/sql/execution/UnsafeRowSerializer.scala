@@ -62,9 +62,11 @@ private class UnsafeRowSerializerInstance(
 
     override def writeValue[T: ClassTag](value: T): SerializationStream = {
       val row = value.asInstanceOf[UnsafeRow]
+      /*
       if (dataSize != null) {
         dataSize.add(row.getSizeInBytes)
       }
+      */
       dOut.writeInt(row.getSizeInBytes)
       row.writeToStream(dOut, writeBuffer)
       this

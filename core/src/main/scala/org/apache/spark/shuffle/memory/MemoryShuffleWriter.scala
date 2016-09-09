@@ -58,7 +58,7 @@ private[spark] class MemoryShuffleWriter[K, V](
     for (elem <- iter) {
       val bucketId = dep.partitioner.getPartition(elem._1)
       shuffleData(bucketId).write(elem._1, elem._2)
-      shuffleWriteMetrics.incRecordsWritten(1)
+      //shuffleWriteMetrics.incRecordsWritten(1)
     }
   }
 

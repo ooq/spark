@@ -79,8 +79,10 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private final SparkConf sparkConf;
   private final boolean transferToEnabled;
 
-  private DistributeStream distributeStream;
   @Nullable private MapStatus mapStatus;
+
+  DistributeStream[] outStreams;
+
 
   /**
    * Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -113,6 +115,7 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.taskContext = taskContext;
     this.sparkConf = sparkConf;
     this.transferToEnabled = sparkConf.getBoolean("spark.file.transferTo", true);
+    this.outStreams = new DistributeStream[numPartitions];
     open();
   }
 
@@ -126,7 +129,9 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   private void open() throws IOException {
-    distributeStream = distributor.distributeStream(memoryManager);
+    for (int i = 0; i < outStreams.length; i++) {
+      outStreams[i] =  distributor.distributeStream(memoryManager);
+    }
   }
 
   @VisibleForTesting
@@ -138,20 +143,21 @@ public class PageShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       i++;
     }
 
-    ShuffleBlockId blockId = new ShuffleBlockId(shuffleId, mapId, 0);
-    blockManager.putMyPage(blockId, distributeStream.getMemoryPages());
+    for (int reduceId = 0; reduceId < outStreams.length; reduceId++) {
+      ShuffleBlockId blockId = new ShuffleBlockId(shuffleId, mapId, reduceId);
+      blockManager.putMyPage(blockId, outStreams[reduceId].getMemoryPages());
+    }
 
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
   }
 
   @VisibleForTesting
   void insertRecordIntoDistributor(Product2<K, V> record) throws IOException {
-    //final K key = record._1();
-    //final int partitionId = partitioner.getPartition(key);
+    final K key = record._1();
+    final int partitionId = partitioner.getPartition(key);
 
     //distributeStream.writeKey(key, OBJECT_CLASS_TAG);
-    distributeStream.writeValue(record._2(), OBJECT_CLASS_TAG);
-
+    outStreams[partitionId].writeValue(record._2(), OBJECT_CLASS_TAG);
     //System.out.println("writing out in PageShuffleWriter");
     //System.out.println(key +  " " + record._2());
   }
