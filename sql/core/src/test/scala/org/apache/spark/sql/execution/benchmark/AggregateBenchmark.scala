@@ -151,8 +151,36 @@ class AggregateBenchmark extends BenchmarkBase {
 
     .getOrCreate()
 
-  lazy val sparkSessionSort = SparkSession.builder
+  lazy val sparkSessionMemory = SparkSession.builder
     .master("local[1]")
+    .appName("microbenchmark")
+    .config("spark.sql.shuffle.partitions", 1)
+    .config("spark.shuffle.manager", "memory")
+    .config("spark.sql.autoBroadcastJoinThreshold", 1)
+    .config("spark.sql.codegen.wholeStage", "true")
+    .config("spark.sql.codegen.aggregate.map.columns.max", "100")
+      .config("spark.default.parallelism", 2)
+      .config("spark.shuffle.sort.bypassMergeThreshold", -1)
+    //.config("spark.executor.memory", "1500m")
+    //.config("spark.driver.memory", "1300m")
+    .getOrCreate()
+
+  lazy val sparkSessionDisk = SparkSession.builder
+    .master("local[1]")
+    .appName("microbenchmark")
+    .config("spark.sql.shuffle.partitions", 1)
+    .config("spark.shuffle.manager", "disk")
+    .config("spark.sql.autoBroadcastJoinThreshold", 1)
+    .config("spark.sql.codegen.wholeStage", "true")
+    .config("spark.sql.codegen.aggregate.map.columns.max", "100")
+      .config("spark.default.parallelism", 2)
+      .config("spark.shuffle.sort.bypassMergeThreshold", -1)
+    //.config("spark.executor.memory", "1500m")
+    //.config("spark.driver.memory", "1300m")
+    .getOrCreate()
+
+  lazy val sparkSessionSortCluster = SparkSession.builder
+    .master("local-cluster[2,1,1024]")
     .appName("microbenchmark")
     .config("spark.sql.shuffle.partitions", 1)
     .config("spark.shuffle.manager", "sort")
@@ -165,11 +193,12 @@ class AggregateBenchmark extends BenchmarkBase {
     //.config("spark.driver.memory", "4g")
     .getOrCreate()
 
-  lazy val sparkSessionMemory = SparkSession.builder
+
+  lazy val sparkSessionSort = SparkSession.builder
     .master("local[1]")
     .appName("microbenchmark")
     .config("spark.sql.shuffle.partitions", 1)
-    .config("spark.shuffle.manager", "memory")
+    .config("spark.shuffle.manager", "sort")
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
@@ -195,18 +224,26 @@ class AggregateBenchmark extends BenchmarkBase {
     val benchmark = new Benchmark("shuffle unit test", N)
 
     def f0(): Unit
-    = sparkSessionSort.range(N)
-      .repartition(2).selectExpr("sum(id)").show()
+    = sparkSessionSortCluster.range(N)
+      .repartition(1).selectExpr("sum(id)").show()
 
     def f1(): Unit
     = sparkSessionNoCopy.range(N)
       .repartition(2).selectExpr("sum(id)").show()
 
-    f0()
+    def f2(): Unit
+    = sparkSessionMemory.range(N)
+      .repartition(1).selectExpr("sum(id)").show()
 
-    f1()
+    def f3(): Unit
+    = sparkSessionDisk.range(N)
+      .repartition(1).selectExpr("sum(id)").show()
 
-    //benchmark.addCase(s"sort", numIters = 5) { iter =>
+    f3()
+
+    //f1()
+
+    //benchmark.addCase(s"sort", numIters = 5) { itrer =>
     //  f0()
     //}
 
@@ -214,7 +251,7 @@ class AggregateBenchmark extends BenchmarkBase {
     //  f1()
     //}
     //benchmark.run()
-    while(true) {}
+    // while(true) {}
   }
 
   test("shuffle sort test - big cardinality") {
