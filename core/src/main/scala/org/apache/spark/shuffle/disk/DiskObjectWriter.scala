@@ -92,7 +92,7 @@ private[spark] class DiskObjectWriter(blockManager: BlockManager,
         val result = blockManager.putBytesAndReturnSize(
           blockId,
           byteOutputStream.getByteBuffer(),
-          StorageLevel.MEMORY_ONLY_SER,
+          StorageLevel.DISK_ONLY,
           tellMaster = false)
         // val timeEnd = System.nanoTime
         // val durationMs = (timeEnd - timeStart) / 1000 / 1000

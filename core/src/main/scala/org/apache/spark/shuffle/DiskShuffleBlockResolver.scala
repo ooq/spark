@@ -20,6 +20,7 @@ package org.apache.spark.shuffle
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentLinkedQueue
 
+import org.apache.spark.util.io.ChunkedByteBuffer
 import org.apache.spark.{SparkConf, SparkEnv}
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
@@ -44,9 +45,8 @@ private[spark] class DiskShuffleBlockResolver(conf: SparkConf,
 
 
   override def getBlockData(blockId: ShuffleBlockId): ManagedBuffer = {
-    blockManager.memoryStore.getBytes(blockId) match {
-      case Some(bytes) => new NioManagedBuffer(bytes.toByteBuffer)
-      case None => throw new BlockNotFoundException(blockId.toString)
+    blockManager.diskStore.getBytes(blockId) match {
+      case bytes: ChunkedByteBuffer => new NioManagedBuffer(bytes.toByteBuffer)
     }
   }
 
