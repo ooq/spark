@@ -78,6 +78,7 @@ private[spark] class DiskObjectWriter(blockManager: BlockManager,
 
     //serializationStream.writeObject(key)
     //serializationStream.writeObject(value)
+    //println("write value " + value)
     serializationStream.writeValue(value)
   }
 

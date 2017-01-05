@@ -140,7 +140,8 @@ class AggregateBenchmark extends BenchmarkBase {
     .master("local[1]")
     .appName("microbenchmark")
     .config("spark.sql.shuffle.partitions", 1)
-    .config("spark.shuffle.manager", "page")
+    .config("spark.shuffle.manager", "nocopy")
+    .config("spark.shuffle.compress", "false")
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
@@ -156,10 +157,11 @@ class AggregateBenchmark extends BenchmarkBase {
     .appName("microbenchmark")
     .config("spark.sql.shuffle.partitions", 1)
     .config("spark.shuffle.manager", "memory")
+    .config("spark.shuffle.compress", "false")
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
-      .config("spark.default.parallelism", 2)
+      .config("spark.default.parallelism", 1)
       .config("spark.shuffle.sort.bypassMergeThreshold", -1)
     //.config("spark.executor.memory", "1500m")
     //.config("spark.driver.memory", "1300m")
@@ -170,10 +172,11 @@ class AggregateBenchmark extends BenchmarkBase {
     .appName("microbenchmark")
     .config("spark.sql.shuffle.partitions", 1)
     .config("spark.shuffle.manager", "disk")
+    .config("spark.shuffle.compress", "false")
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
-      .config("spark.default.parallelism", 2)
+      .config("spark.default.parallelism", 1)
       .config("spark.shuffle.sort.bypassMergeThreshold", -1)
     //.config("spark.executor.memory", "1500m")
     //.config("spark.driver.memory", "1300m")
@@ -187,7 +190,7 @@ class AggregateBenchmark extends BenchmarkBase {
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
-    .config("spark.default.parallelism", 2)
+    .config("spark.default.parallelism", 1)
     .config("spark.shuffle.sort.bypassMergeThreshold", -1)
     //.config("spark.executor.memory", "4g")
     //.config("spark.driver.memory", "4g")
@@ -202,7 +205,7 @@ class AggregateBenchmark extends BenchmarkBase {
     .config("spark.sql.autoBroadcastJoinThreshold", 1)
     .config("spark.sql.codegen.wholeStage", "true")
     .config("spark.sql.codegen.aggregate.map.columns.max", "100")
-    .config("spark.default.parallelism", 2)
+    .config("spark.default.parallelism", 1)
     .config("spark.shuffle.sort.bypassMergeThreshold", -1)
     //.config("spark.executor.memory", "4g")
     //.config("spark.driver.memory", "4g")
@@ -239,7 +242,25 @@ class AggregateBenchmark extends BenchmarkBase {
     = sparkSessionDisk.range(N)
       .repartition(1).selectExpr("sum(id)").show()
 
-    f3()
+    def f4(): Unit
+    = sparkSessionDisk.range(N)
+      .selectExpr("id & 0 as k1"
+        , "id & 0 as k2"
+        , "id & 0 as k3"
+        , "id & 0 as k4"
+        , "id & 0 as k5")
+      .repartition(1).show(1)
+
+    def f5(): Unit
+    = sparkSessionDisk.range(N)
+      .selectExpr("case when true then '111111111111111111111' end as k")
+      .repartition(1).show(1)
+
+    def f6(): Unit
+    = sparkSessionDisk.read.csv("file:///Users/qifan/repos/memoryshuffle/temp")
+      .show()
+
+    f0()
 
     //f1()
 
@@ -251,7 +272,7 @@ class AggregateBenchmark extends BenchmarkBase {
     //  f1()
     //}
     //benchmark.run()
-    // while(true) {}
+    //while(true) {}
   }
 
   test("shuffle sort test - big cardinality") {
@@ -449,11 +470,25 @@ class AggregateBenchmark extends BenchmarkBase {
     while (i < 6) {
       var minTime: Long = 10000
       var j = 0
-      val N = 1 << (i + 15)
-      while (j < 10) {
+      val N = 1 << (i + 19)
+
+      def f1(): Unit
+      = sparkSessionSort.range(N)
+        .repartition(1).selectExpr("sum(id)").collect()
+
+
+      def f2(): Unit
+      = sparkSessionSort.read.csv("file:///Users/qifan/repos/memoryshuffle/temp")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f3(): Unit
+      = sparkSessionSort.read.csv("file:///Users/qifan/repos/memoryshuffle/temp3")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+
+      while (j < 20) {
         val timeStart = System.nanoTime
-        sparkSessionSort.range(N)
-          .repartition(1).selectExpr("sum(id)").collect()
+        f1()
         val timeEnd = System.nanoTime
         val nsPerRow: Long = (timeEnd - timeStart) / N
         if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
@@ -480,11 +515,29 @@ Intel(R) Core(TM) i7-3540M CPU @ 3.00GHz
     while (i < 6) {
       var minTime: Long = 10000
       var j = 0
-      val N = 1 << (i + 15)
-      while (j < 10) {
+      val N = 1 << (i + 19)
+
+      def f1(): Unit
+      = sparkSessionNoCopy.range(N)
+        .repartition(1).selectExpr("sum(id)").collect()
+
+
+      def f2(): Unit
+      = sparkSessionNoCopy.read.csv("file:///Users/qifan/repos/memoryshuffle/temp")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f3(): Unit
+      = sparkSessionNoCopy.read.csv("file:///Users/qifan/repos/memoryshuffle/temp3")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f4(): Unit
+      = sparkSessionNoCopy.read.csv("file:///Users/qifan/repos/memoryshuffle/temp6")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+
+      while (j < 20) {
         val timeStart = System.nanoTime
-        sparkSessionNoCopy.range(N)
-          .repartition(1).selectExpr("sum(id)").collect()
+        f1()
         val timeEnd = System.nanoTime
         val nsPerRow: Long = (timeEnd - timeStart) / N
         if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
@@ -512,11 +565,79 @@ Intel(R) Core(TM) i7-3540M CPU @ 3.00GHz
     while (i < 6) {
       var minTime: Long = 10000
       var j = 0
-      val N = 1 << (i + 15)
-      while (j < 10) {
+      val N = 1 << (i + 19)
+
+      def f1(): Unit
+      = sparkSessionMemory.range(N)
+        .repartition(1).selectExpr("sum(id)").collect()
+
+
+      def f2(): Unit
+      = sparkSessionMemory.read.csv("file:///Users/qifan/repos/memoryshuffle/temp")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f3(): Unit
+      = sparkSessionMemory.read.csv("file:///Users/qifan/repos/memoryshuffle/temp3")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f4(): Unit
+      = sparkSessionMemory.read.csv("file:///Users/qifan/repos/memoryshuffle/temp6")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+
+
+      while (j < 200) {
         val timeStart = System.nanoTime
-        sparkSessionMemory.range(N)
-          .repartition(1).selectExpr("sum(id)").collect()
+        f1()
+        val timeEnd = System.nanoTime
+        val nsPerRow: Long = (timeEnd - timeStart) / N
+        if (j > 3 && minTime > nsPerRow) minTime = nsPerRow
+        printf("Round %20s %20s\n", j, nsPerRow)
+        j += 1
+      }
+      System.out.println(Benchmark.getJVMOSInfo())
+      System.out.println(Benchmark.getProcessorName())
+      printf("%20s %20s\n", N, minTime)
+      i += 1
+    }
+    /*
+Java HotSpot(TM) 64-Bit Server VM 1.7.0_40-b43 on Mac OS X 10.10.5
+Intel(R) Core(TM) i7-3540M CPU @ 3.00GHz
+
+             1048576                  330
+     */
+  }
+
+
+  test("shuffle disk test") {
+
+
+    var i = 5
+    while (i < 6) {
+      var minTime: Long = 10000
+      var j = 0
+      val N = 1 << (i + 19)
+
+      def f1(): Unit
+      = sparkSessionDisk.range(N)
+        .repartition(1).selectExpr("sum(id)").collect()
+
+
+      def f2(): Unit
+      = sparkSessionDisk.read.csv("file:///Users/qifan/repos/memoryshuffle/temp")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f3(): Unit
+      = sparkSessionDisk.read.csv("file:///Users/qifan/repos/memoryshuffle/temp3")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      def f4(): Unit
+      = sparkSessionDisk.read.csv("file:///Users/qifan/repos/memoryshuffle/temp6")
+        .repartition(1).selectExpr("sum(_c0)").collect()
+
+      while (j < 200) {
+        val timeStart = System.nanoTime
+        f1()
         val timeEnd = System.nanoTime
         val nsPerRow: Long = (timeEnd - timeStart) / N
         if (j > 3 && minTime > nsPerRow) minTime = nsPerRow

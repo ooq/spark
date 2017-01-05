@@ -552,7 +552,7 @@ public final class UnsafeRow extends MutableRow implements Externalizable, KryoS
       int offsetInByteArray = (int) (Platform.BYTE_ARRAY_OFFSET - baseOffset);
       out.write((byte[]) baseObject, offsetInByteArray, sizeInBytes);
     } else {
-      System.out.println("entering expensive pathin UnsafeRow.java");
+      // System.out.println("entering expensive pathin UnsafeRow.java");
       int dataRemaining = sizeInBytes;
       long rowReadPosition = baseOffset;
       while (dataRemaining > 0) {

@@ -50,7 +50,8 @@ private[spark] class PageShuffleDistributeStream(taskMemoryManager: TaskMemoryMa
       //currentPage = allocatePage(required)
 
       currentPage = MemoryBlock.fromLongArray(new Array[Long](1 * 1000 * 1000))
-      //currentPage = new MemoryBlock(null, Platform.allocateMemory(8 * 1000 * 1000), 8 * 1000 * 1000)
+      // currentPage = new MemoryBlock(null, Platform.allocateMemory(8 * 1000 * 1000), 8 * 1000 *
+      //  1000)
       base = currentPage.getBaseObject
       baseOff = currentPage.getBaseOffset
     }

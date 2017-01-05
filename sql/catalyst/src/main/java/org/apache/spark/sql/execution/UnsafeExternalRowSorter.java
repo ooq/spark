@@ -158,7 +158,7 @@ public final class UnsafeExternalRowSorter {
         @Override
         public UnsafeRow next() {
           try {
-            System.out.println("getting next value in UnsafeExternalRowSorter");
+            //System.out.println("getting next value in UnsafeExternalRowSorter");
             sortedIterator.loadNext();
             row.pointTo(
               sortedIterator.getBaseObject(),

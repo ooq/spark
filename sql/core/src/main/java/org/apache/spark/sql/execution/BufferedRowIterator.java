@@ -35,6 +35,8 @@ public abstract class BufferedRowIterator {
   // used when there is no column in output
   protected UnsafeRow unsafeRow = new UnsafeRow(0);
   private long startTimeNs = System.nanoTime();
+  private long numStops = 0;
+  private long numNoStops = 0;
 
   protected int partitionIndex = -1;
 
@@ -56,6 +58,8 @@ public abstract class BufferedRowIterator {
    * this is a measure of how long the pipeline has been running.
    */
   public long durationMs() {
+    //System.out.println("stop = " + numStops);
+    //System.out.println("nostop = " + numNoStops);
     return (System.nanoTime() - startTimeNs) / (1000 * 1000);
   }
 
@@ -77,7 +81,17 @@ public abstract class BufferedRowIterator {
    * If it returns true, the caller should exit the loop (return from processNext()).
    */
   protected boolean shouldStop() {
-    //return true;
+    // return true;
+
+    /*
+    if (currentRows.isEmpty()) {
+      numNoStops++;
+      return false;
+    } else {
+      numStops++;
+      return true;
+    }
+    */
     return !currentRows.isEmpty();
   }
 
