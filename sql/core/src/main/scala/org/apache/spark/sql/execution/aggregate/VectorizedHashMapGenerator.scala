@@ -77,7 +77,7 @@ class VectorizedHashMapGenerator(
        |  private org.apache.spark.sql.execution.vectorized.ColumnarBatch batch;
        |  private org.apache.spark.sql.execution.vectorized.ColumnarBatch aggregateBufferBatch;
        |  private int[] buckets;
-       |  private int capacity = 1 << 16;
+       |  private int capacity = 1 << 22;
        |  private double loadFactor = 0.5;
        |  private int numBuckets = (int) (capacity / loadFactor);
        |  private int maxSteps = 2;
@@ -182,7 +182,9 @@ class VectorizedHashMapGenerator(
     s"""
        |public org.apache.spark.sql.execution.vectorized.ColumnarBatch.Row findOrInsert(${
             groupingKeySignature}) {
-       |  long h = hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  // long h = hash(${groupingKeys.map(_.name).mkString(", ")});
+       |  // long h = hash(agg_key);
+       |  long h = (long) agg_key;
        |  int step = 0;
        |  int idx = (int) h & (numBuckets - 1);
        |  while (step < maxSteps) {

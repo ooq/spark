@@ -505,8 +505,12 @@ case class HashAggregateExec(
       if (modes.forall(mode => mode == Partial || mode == PartialMerge) && !Utils.isTesting) {
         logInfo("spark.sql.codegen.aggregate.map.twolevel.enable is set to true, but"
           + " current version of codegened fast hashmap does not support this aggregate.")
+        //printf("bad not supported\n")
+
       }
     } else {
+      //printf(" supported\n")
+
       isFastHashMapEnabled = true
 
       // This is for testing/benchmarking only.
